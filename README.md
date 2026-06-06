@@ -222,6 +222,29 @@ separate panel.
 4. `lehman_tap_program.txt` (dist 0.361) — TAP INELIGIBILITY
 5. `lehman_tap_program.txt` (dist 0.391) — TAP QUALIFICATIONS
 
+### Example 3 — Withdrawal from all classes (strongest retrieval case)
+
+**Query:** *What happens to my financial aid if I withdraw from all my classes?*
+
+**Answer:** If you withdraw from all your classes, or stop attending them without officially withdrawing, several things can happen to your financial aid:
+
+- **Return of Federal Aid:** If you withdraw from all classes before completing 60% of the semester, federal regulations require Lehman College to calculate how much federal aid you "earned." The unearned portion must be returned to the federal aid programs. The college will use your last date of attendance to calculate this if you unofficially withdraw.
+- **Financial Obligations:** You may owe money back to Lehman College and/or the federal government. This can include increased out-of-pocket payments toward tuition or having to repay received funds to the U.S. Department of Education.
+- **Impact on Future Aid:** Your financial aid for future semesters may be affected, and you could lose part or all of the following semester's financial aid. Your SAP status may also be impacted, and you may lose TAP eligibility for that semester.
+- **Student Loans:** A student loan could be forced into repayment.
+- **Order of Return:** Funds must be returned in a specific order: Unsubsidized Direct Loan, Subsidized Direct Loan, PLUS loans, Pell Grant, SEOG, and other federal aid.
+
+It is strongly advised to always consult a financial aid counselor before withdrawing from all courses, as the consequences can extend beyond one semester.
+
+**Sources (top 5):**
+1. `lehman_withdrawals_policy.txt` (dist 0.170) — UNOFFICIAL WITHDRAWALS
+2. `lehman_financial_aid_faqs.txt` (dist 0.191) — DROPPING OR WITHDRAWING warning
+3. `lehman_withdrawals_policy.txt` (dist 0.205) — WHAT HAPPENS WHEN YOU WITHDRAW / 60% rule
+4. `lehman_withdrawals_policy.txt` (dist 0.364) — ORDER OF RETURN
+5. `lehman_withdrawals_policy.txt` (dist 0.379) — document header
+
+This is the strongest retrieval case in the eval set: 4 of 5 chunks come from the dedicated withdrawals policy doc and the top hit has the lowest distance (0.170) of any eval query.
+
 ---
 
 ## Refusal / Out-of-Scope Example
