@@ -71,12 +71,26 @@ def format_sources(chunks: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def _content_text(content) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for p in content:
+            if isinstance(p, dict) and "text" in p:
+                parts.append(p["text"] if isinstance(p["text"], str) else str(p["text"]))
+            elif isinstance(p, str):
+                parts.append(p)
+        return " ".join(parts).strip()
+    return str(content)
+
+
 def answer(query: str, history: list[dict] | None = None) -> tuple[str, str]:
     if not query or not query.strip():
         return "", ""
     history = history or []
 
-    prior_user_msgs = [t["content"] for t in history if t["role"] == "user"]
+    prior_user_msgs = [_content_text(t["content"]) for t in history if t["role"] == "user"]
     last_prior = prior_user_msgs[-1] if prior_user_msgs else ""
     retrieval_query = f"{last_prior} {query}".strip() if last_prior else query
 
@@ -85,7 +99,7 @@ def answer(query: str, history: list[dict] | None = None) -> tuple[str, str]:
     contents = []
     for turn in history:
         role = "user" if turn["role"] == "user" else "model"
-        contents.append({"role": role, "parts": [{"text": turn["content"]}]})
+        contents.append({"role": role, "parts": [{"text": _content_text(turn["content"])}]})
     user_msg = f"Context:\n{format_context(chunks)}\n\nQuestion: {query}"
     contents.append({"role": "user", "parts": [{"text": user_msg}]})
 
