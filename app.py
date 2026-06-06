@@ -10,7 +10,7 @@ from embed import retrieve
 load_dotenv()
 
 MODEL = "gemini-2.5-flash"
-TOP_K = 5
+TOP_K = 7
 TEMPERATURE = 0.2
 PREVIEW_CHARS = 200
 

@@ -37,7 +37,7 @@ All 12 documents were pre-scraped to plain text and stored in `data/raw/`. Total
 flowchart TD
     subgraph BUILD["Build time (one-off, run by embed.py)"]
         A[12 .txt files in data/raw/] -->|ingest.py| B[RecursiveCharacterTextSplitter<br/>500 chars / 100 overlap<br/>filter chunks under 100 chars]
-        B -->|98 chunks| C[all-MiniLM-L6-v2<br/>local sentence-transformer]
+        B -->|95 chunks| C[all-MiniLM-L6-v2<br/>local sentence-transformer]
         C -->|vectors + source metadata| D[(ChromaDB<br/>chroma_db/)]
     end
 
@@ -62,7 +62,7 @@ The build-time path runs once when you execute `embed.py`: it loads the corpus, 
 **Chunk size:** 500 characters
 **Overlap:** 100 characters
 **Post-filter:** chunks with fewer than 100 non-whitespace characters are dropped (removes header-only fragments).
-**Final chunk count:** 98 (99 before the filter)
+**Final chunk count:** 95 (99 before the filter — 4 chunks dropped as header-only / metadata-dominant)
 
 **Why these choices fit the documents:**
 
@@ -390,51 +390,44 @@ A second behavioral note from the eval (not a failure, but worth documenting): f
 
 ---
 
-## Stretch Feature: Hybrid Search (BM25 + Semantic via RRF)
+## Stretch Feature: Retrieval Tuning (top-k bump + ingest-time header filter)
 
-**What I built.** A second retriever (`retrieve_bm25`) using `rank_bm25`'s `BM25Okapi` over the same 98 chunks, plus a fusion function (`retrieve_hybrid`) that combines semantic and BM25 candidate sets via **Reciprocal Rank Fusion** with the standard `k=60` constant. Each side contributes its top-20 candidates; RRF fuses by rank, not raw score, so it sidesteps the cosine-vs-BM25 score-scale mismatch. Implementation lives in `embed.py`; a comparison script at `compare_retrievers.py` runs the 5 eval queries through all three retrievers (semantic-only, BM25-only, hybrid) and prints a per-query diff.
+**Motivation.** Two issues surfaced from the eval:
+- Q3 (SAP appeal) was a partial-accuracy failure: the post-appeal *probation* chunk ranked 6th in semantic retrieval, just outside top-5.
+- Header-only chunks (the `SOURCE:` / `DOCUMENT:` / `SCRAPED:` metadata blocks at the top of each source file) occasionally surfaced in retrieval despite carrying no answer content.
 
-**Hypothesis.** The documented SAP-appeal failure was a *recall* problem driven by vocabulary mismatch — the relevant "probation" chunk ranked outside top-5 because the query "how do I appeal" embeds far from outcome-vocabulary like *probation* or *warning period*. BM25, matching surface keywords, should surface that chunk; hybrid should pull it into top-5 without losing the semantic wins on the other queries.
+**What I tried first (and reverted).** I prototyped a full hybrid retriever (BM25 alongside semantic, fused via Reciprocal Rank Fusion). It fixed Q3 but introduced new regressions: BM25 surfaced a Reddit anecdote that displaced the ORDER OF RETURN list (Q2), and a document-header chunk that displaced the CUNYfirst step-by-step instructions (Q5). I tested two tunings to recover — weighted RRF and a BM25-side header filter. Weighting at 1.5x broke Q3 (the very win the exercise was meant to preserve). Header filtering on BM25 results helped Q5 but not Q2. Net: hybrid was a net-positive over semantic-only with the header filter, but the architecture added ~150 lines, a new dependency (`rank-bm25`), corpus-specific tuning knobs, and ended up as an opt-in that didn't ship in the UI.
 
-**Results.**
+**The simpler fix I shipped instead.** Two minimal changes, ~10 net lines of code:
 
-| # | Query | Hybrid effect on top-5 | Verdict |
-|---|---|---|---|
-| 1 | TAP 5th payment | Added `tap_program#6` (continuation of payment chart) + `state_aid_faqs#1` (TAP FAQ); dropped `#2` (Part-time TAP) and `#9` (Summer TAP) | Mild improvement — payment chart now contiguous |
-| 2 | Withdraw all classes | **Dropped `withdrawals#3` (the ORDER OF RETURN list)**, added a Reddit anecdote chunk | Mild regression |
-| 3 | **SAP appeal** | **Added `sap_policy#8` (FINANCIAL AID PROBATION) at rank 5** — the exact chunk needed to fix the documented failure case | **Clear win** |
-| 4 | Excelsior income | No change | Neutral |
-| 5 | CUNYfirst aid status | **Dropped `faqs#6` (the step-by-step instructions)**, added the document header `cunyfirst_facts#0` | Mild regression |
+1. **Bump `top_k` from 5 to 7.** The SAP probation chunk was already ranking 6th in semantic — just outside the window. Returning 7 chunks captures it without changing any other ranking. Gemini 2.5 Flash has plenty of context-window headroom for two extra chunks.
+2. **Tighten the ingest-time header filter.** The original `<100 char` filter operated on raw text, so chunks that were mostly metadata but >100 chars total still survived. The updated filter (in `ingest.py`'s `_substantive_len()`) strips `SOURCE:` / `DOCUMENT:` / `SCRAPED:` lines and ASCII divider rules *before* the 100-char check. Drops 3 additional header-only chunks at index time — including the `cunyfirst_facts#0` chunk that caused the hybrid-Q5 regression.
 
-**Verdict.** Hybrid is a **targeted fix, not a universal upgrade.** It fixed exactly the failure case I designed it to address: the FINANCIAL AID PROBATION chunk that lives at `lehman_sap_policy.txt#8` jumped from rank 6+ (semantic-only) to rank 5 (hybrid), which means the grounded answer would now include the post-appeal probation outcome that the original system missed. But on two other queries (Withdrawals, CUNYfirst) BM25 pulled in surface-keyword matches that lack semantic depth — a Reddit personal anecdote because it contains "withdraw," and a document header because it contains "CUNYFIRST" — at the cost of more substantive chunks.
+**Results after the simpler fix.**
 
-**Why this pattern is consistent with theory.** BM25 helps when query terms are rare and meaningful (*probation*, *eligibility chart*); it hurts when query terms are common across the corpus (*withdraw*, *CUNYfirst*) because keyword matches no longer differentiate substance from surface mentions. Hybrid via RRF averages the two systems' ranks — if one system gets the right chunk at rank 1 and the other ranks a noisy chunk at rank 1, the noisy chunk leaks into top-5 too.
+| # | Query | Top-5 (semantic, k=5) | Top-7 (semantic, k=7) | Verdict |
+|---|---|---|---|---|
+| 1 | TAP 5th payment | All from `tap_program` | + `state_aid_faqs#1` (TAP FAQ), `tap_program#4` (SEEK note) | Improved (extra context) |
+| 2 | Withdraw all classes | Has ORDER OF RETURN at #4 | Same + Reddit anecdotes at #6–7 (low priority) | No change to top-5 |
+| 3 | **SAP appeal** | **Missed probation chunk** | **Probation chunk now at #6** | **Fixed** |
+| 4 | Excelsior income | Excelsior + state-aid FAQs | + `excelsior#2` (eligibility requirements) | Improved (extra context) |
+| 5 | CUNYfirst status | Step-by-step at #1, FAQ at #2 | Same + HESC + special-circumstances how-to | No change to top-5 |
 
-**Tuning experiment.** I then tested two cheap, complementary tunings to address the regressions:
+Chunk count: **98 → 95** (3 additional header-only chunks dropped by the tightened filter).
 
-1. **Weighted RRF** — multiply the semantic side's RRF contribution by some factor > 1, tilting the fusion toward semantic.
-2. **Header filter for BM25** — drop BM25 candidates that are header-only chunks (regex-match `SOURCE:`, `DOCUMENT:`, `SCRAPED:` lines and dividers; if the remaining substantive content is < 100 chars, drop). These chunks contain query keywords (document title words) but no answer content.
+**Why this is a better stretch than hybrid was.**
 
-I tested four configurations on the 5 eval queries; results below.
+- Targets the actual problem — a top-k cutoff and a chunk-hygiene gap — rather than introducing a parallel retrieval system to paper over both.
+- Fixes the documented failure case **in the shipped UI**, not just in an opt-in comparison script.
+- Zero new dependencies. Zero new code paths. Zero corpus-specific tuning knobs.
+- Reflects the principle the course slides repeated: *the secret sauce isn't the model* — it's the pipeline hygiene.
 
-| Config | Q1 (TAP) | Q2 (Withdrawals) | Q3 (SAP appeal — failure case) | Q4 (Excelsior) | Q5 (CUNYfirst) |
-|---|---|---|---|---|---|
-| Semantic-only | OK | OK (has ORDER OF RETURN) | **Fails** (no probation chunk) | OK | OK (has steps) |
-| Hybrid vanilla (no tuning) | Improved | Regress: drops ORDER OF RETURN, adds Reddit | **Win — probation surfaces** | Neutral | Regress: drops steps, adds header |
-| Hybrid w=1.5 + header filter | Improved | Still regresses | **Loses probation win** | Neutral | Steps restored |
-| **Hybrid w=1.0 + header filter** | **Improved** | Still regresses | **Win — probation surfaces** | Neutral | **Steps restored** |
+### What did the hybrid experiment teach me
 
-**What the tunings actually showed.**
-
-- **`semantic_weight=1.5` was too aggressive.** It tilted the fusion enough to make semantic-only's rank-1 chunk (`sap_policy#9`, RE-ESTABLISHING ELIGIBILITY) outweigh BM25's rank-5 contribution (`sap_policy#8`, FINANCIAL AID PROBATION). The probation chunk dropped out of top-5 — i.e., the tuning broke the win the entire exercise was supposed to preserve. *Lesson: when one system has a unique correct answer that only ranks moderately, weighting against it can erase the very signal you're trying to fuse in.*
-- **The header filter alone (no weight change) is the right tuning for this corpus.** It removes the structural noise (Q5's regression — the `cunyfirst_facts#0` header chunk that was BM25's rank-1 hit) without disturbing the rank arithmetic. With it, Q3's probation chunk stays in top-5 and Q5's step-by-step instructions chunk comes back.
-- **Q2's regression cannot be fixed by either tuning.** The Reddit anecdote that displaces the ORDER OF RETURN list is *not* a header (so the filter doesn't catch it) and it ranks too high in BM25 for moderate weight adjustments to suppress. Fixing it would require either much higher semantic weights (which kills Q3) or a per-source priority signal (e.g., deboost forum content for policy queries), which is out of scope for this stretch.
-
-**Final verdict.** Tuned hybrid (`retrieve_hybrid(query, filter_bm25_headers=True)`) is a **net win over semantic-only** on this eval set: 1 clear win (Q3 — the documented failure case), 1 improvement (Q1), 1 neutral (Q4), 1 wash (Q5), 1 partial regression (Q2). The wins fix a documented failure; the remaining regression is honest and traceable to a specific corpus property (a Reddit chunk with high keyword density but low semantic relevance).
-
-**App default.** I'm keeping `app.py` on semantic-only by default and leaving `retrieve_hybrid()` available as an opt-in. Reasoning: the Q3 win is real but the Q2 regression loses an enumerated answer-critical list (the federal-aid return order), and on a corpus this small, swapping one win for one regression isn't a clear enough delta to justify changing the default for everyone. Better: ship hybrid as an opt-in for users (or a future per-query router) and document the tradeoff transparently here.
-
-**Reproduce:** `ai201_env/bin/python compare_retrievers.py`
+Even though I reverted it, the experiment wasn't wasted:
+- Confirmed the failure was a *recall* problem (BM25 located the probation chunk via keyword match, validating the diagnosis).
+- Showed concretely how BM25 fails on a small corpus when the query term is high-frequency across documents (`withdraw`, `CUNYFIRST` appear in many chunks, so BM25 over-ranks low-signal occurrences).
+- Forced me to test the cheap fix I had originally proposed in the failure analysis. The cheap fix won. *Always try the one-line fix first.*
 
 ---
 

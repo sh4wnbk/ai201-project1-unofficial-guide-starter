@@ -61,9 +61,9 @@ My corpus has two distinct document types that informed this decision:
 
 **Embedding model:** `all-MiniLM-L6-v2` via `sentence-transformers` — runs locally, no API key, no rate limits.
 
-**Top-k:** 5 chunks per query
+**Top-k:** 7 chunks per query (originally 5; bumped after eval — see Stretch Feature below)
 
-**Reasoning:** 5 chunks gives the LLM enough context to synthesize a complete answer (e.g. TAP eligibility requires GPA + credits + payment number — likely spread across 2-3 chunks) without diluting the context with loosely related material. Will tune down to 3 if responses become unfocused.
+**Reasoning:** Started with 5, which gave the LLM enough context to synthesize answers for queries where the relevant chunks all clustered tightly. Bumped to 7 after the eval surfaced a recall-side failure on the SAP-appeal query: the chunk containing the post-appeal *probation* outcome ranked 6th, just outside top-5. Top-7 captures it without diluting precision (all current top hits remain from topically-correct documents). 7 chunks of ~500 chars each is trivially small for Gemini 2.5 Flash's context window.
 
 **Production tradeoff reflection:**
 
@@ -139,43 +139,28 @@ For a real deployment serving Lehman students, I would weigh:
 
 ---
 
-## Stretch Feature: Hybrid Search (BM25 + Semantic)
+## Stretch Feature: Retrieval Tuning (two minimal fixes)
 
-**Motivation.** The SAP appeal eval query (Q3) is documented as a partial-accuracy failure in the README: the system's answer omitted the post-appeal probation outcome because the "probation" chunk ranked below top-5. Inspecting the retrieved set, all 5 hits clustered around *submission* and *documentation* vocabulary, which is semantically close to "how do I appeal." The probation chunk uses different vocabulary ("probation," "warning period") that the semantic embedding ranked further from the query. This is a classic recall failure caused by vocabulary mismatch — exactly what keyword search (BM25) is designed to catch.
+**Motivation.** The SAP appeal eval query (Q3) was documented as a partial-accuracy failure: the system's answer omitted the post-appeal *probation* outcome because that chunk ranked just outside top-5. A second behavioral note from the eval: header-only chunks (the `SOURCE:` / `DOCUMENT:` / `SCRAPED:` metadata blocks at the top of each source file) occasionally surfaced in retrieval despite carrying no answer content.
 
-**Approach.**
+**What I tried first (and removed).** I prototyped hybrid retrieval (BM25 alongside semantic, combined with Reciprocal Rank Fusion). It fixed the SAP-appeal failure but introduced new regressions on two other queries: BM25 surfaced a Reddit anecdote that displaced the ORDER OF RETURN list (Q2), and a document-header chunk that displaced the CUNYfirst step-by-step instructions (Q5). Tuning attempts (weighted RRF, header filter on BM25 results) either preserved one win at the cost of another or required corpus-specific knobs that started feeling brittle. On a 98-chunk corpus, the added complexity wasn't justified.
 
-1. Build a BM25 index over the same 98 chunks already in ChromaDB, using the `rank_bm25` library (`BM25Okapi`).
-2. Implement `retrieve_hybrid(query, k=5)` that runs both retrievals in parallel and combines them with **Reciprocal Rank Fusion (RRF)**:
-   `score(doc) = Σ 1 / (k_rrf + rank_in_system_i)` with `k_rrf=60` (standard).
-   RRF is rank-based, not score-based, so it doesn't require normalizing BM25 scores against cosine distances — a common pitfall when combining incompatible scoring systems.
-3. Pull more candidates than top-k from each system (e.g., 20 each) before fusing, so good chunks that rank 15th in semantic but 2nd in BM25 still make the final top-5.
+**The simpler fix that shipped.** Two minimal changes, ~10 lines of code total:
 
-**Comparison protocol.**
+1. **Bump `top_k` from 5 to 7.** The SAP probation chunk was already ranking 6th in semantic-only retrieval — just outside the window. Returning 7 chunks instead of 5 captures it without changing any other ranking. Gemini 2.5 Flash's context window has plenty of headroom for two extra chunks.
+2. **Tighten the ingest-time header filter.** The original `<100 char` filter operated on raw text, so chunks that were mostly metadata but >100 chars total slipped through. The updated filter strips `SOURCE:`/`DOCUMENT:`/`SCRAPED:` lines and ASCII divider lines *before* the 100-char check (helper: `_substantive_len()` in `ingest.py`). This drops 3 additional header-only chunks at index time, removing the class of noise that hybrid-BM25 was trying to filter out at runtime.
 
-Re-run the 5 evaluation queries from this document on three retrievers:
-- Semantic-only (current `retrieve()`)
-- BM25-only
-- Hybrid (RRF over both)
+**Comparison protocol.** Same 5 eval queries from this document, run through the new retriever (top-7 + filtered chunks). Verified that:
+- Q3's probation chunk now appears in top-7 (rank 6) — failure case resolved.
+- Q1, Q2, Q4, Q5 retain their previous top-5 hits and gain useful additional context in slots 6–7.
+- Total indexed chunks went 98 → 95.
 
-For each query, record top-5 chunk IDs and distances/scores from each retriever, and grade whether the chunk needed for the expected answer appears in top-5. The SAP appeal "probation" chunk is the canonical test case — if hybrid pulls it into top-5 while semantic-only doesn't, that's a measurable win.
+**Why this is a better stretch than hybrid was.**
 
-**Expected outcome (hypothesis).**
-
-Hybrid should fix the SAP failure case (probation chunk surfaces via BM25 keyword match) and should not regress on the other 4 queries (where the answer chunks already rank well semantically). If hybrid *does* regress, the failure mode and explanation go in the writeup.
-
-**Files to add/modify:**
-
-- `requirements.txt` — add `rank-bm25` pinned to installed version
-- `embed.py` — add BM25 indexer + `retrieve_hybrid(query, k=5)`
-- `compare_retrievers.py` (new) — runs the 5 eval queries on all three retrievers and prints a side-by-side comparison
-- `README.md` — append a "Stretch Feature: Hybrid Search" section reporting results
-- (No changes to `app.py` unless hybrid wins decisively — then switch the default.)
-
-**What this does NOT do:**
-
-- No re-chunking, no new embedding model, no new vector store. Hybrid is purely a retrieval-layer addition.
-- No UI toggle. The point is to compare and write up the result, not to ship a feature flag.
+- Targets the actual problem (a top-k cutoff and a chunk-hygiene gap) rather than introducing a parallel retrieval system.
+- Fixes the documented failure case **in the shipped UI**, not just in an opt-in comparison script.
+- No new dependencies, no new code paths, no per-corpus tuning knobs.
+- Reflects the principle the slides repeated: *the secret sauce isn't the model* — it's the pipeline hygiene.
 
 ---
 

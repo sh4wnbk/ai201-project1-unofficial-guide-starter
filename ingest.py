@@ -1,4 +1,5 @@
 import random
+import re
 from collections import defaultdict
 from pathlib import Path
 
@@ -6,6 +7,13 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 RAW_DIR = Path("data/raw")
 CHUNKS_OUT = Path("data/chunks.txt")
+
+
+def _substantive_len(text: str) -> int:
+    cleaned = re.sub(r"^\s*(SOURCE|DOCUMENT|SCRAPED):.*$", "", text, flags=re.MULTILINE)
+    cleaned = re.sub(r"^\s*[=\-_]{3,}\s*$", "", cleaned, flags=re.MULTILINE)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return len(cleaned)
 
 
 def load_documents(raw_dir: Path) -> list[tuple[str, str]]:
@@ -31,7 +39,7 @@ def chunk_documents(docs: list[tuple[str, str]]) -> list[dict]:
 def get_chunks(raw_dir: Path = RAW_DIR) -> list[dict]:
     docs = load_documents(raw_dir)
     chunks = chunk_documents(docs)
-    return [c for c in chunks if len(c["text"].strip()) >= 100]
+    return [c for c in chunks if _substantive_len(c["text"]) >= 100]
 
 
 def main() -> None:
@@ -39,8 +47,8 @@ def main() -> None:
     chunks = chunk_documents(docs)
 
     before = len(chunks)
-    chunks = [c for c in chunks if len(c["text"].strip()) >= 100]
-    print(f"Filtered out {before - len(chunks)} short chunks (<100 chars)")
+    chunks = [c for c in chunks if _substantive_len(c["text"]) >= 100]
+    print(f"Filtered out {before - len(chunks)} chunks with <100 chars of substantive content")
     print(f"Total chunks: {len(chunks)}")
     print()
 
