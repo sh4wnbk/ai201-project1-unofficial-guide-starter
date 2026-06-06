@@ -410,12 +410,29 @@ A second behavioral note from the eval (not a failure, but worth documenting): f
 
 **Why this pattern is consistent with theory.** BM25 helps when query terms are rare and meaningful (*probation*, *eligibility chart*); it hurts when query terms are common across the corpus (*withdraw*, *CUNYfirst*) because keyword matches no longer differentiate substance from surface mentions. Hybrid via RRF averages the two systems' ranks — if one system gets the right chunk at rank 1 and the other ranks a noisy chunk at rank 1, the noisy chunk leaks into top-5 too.
 
-**What I would change to make hybrid a default.** Two cheap, complementary fixes:
+**Tuning experiment.** I then tested two cheap, complementary tunings to address the regressions:
 
-1. **Weighted RRF** — multiply the semantic side's RRF contribution by 1.5–2x. Tilts the fusion toward semantic, lets BM25 only override when its signal is strong enough to outvote the weight.
-2. **Filter the BM25 candidate set** — drop chunks shorter than ~200 chars or that match a "header pattern" (lines like `SOURCE:`, `DOCUMENT:`, `SCRAPED:` near the top). Most of the BM25-induced regressions came from header chunks that contain the query keyword but no answer content.
+1. **Weighted RRF** — multiply the semantic side's RRF contribution by some factor > 1, tilting the fusion toward semantic.
+2. **Header filter for BM25** — drop BM25 candidates that are header-only chunks (regex-match `SOURCE:`, `DOCUMENT:`, `SCRAPED:` lines and dividers; if the remaining substantive content is < 100 chars, drop). These chunks contain query keywords (document title words) but no answer content.
 
-**Why I am not switching the app's default.** The win on Q3 is real, but the two regressions cost real information (an enumerated list of return order, step-by-step CUNYfirst instructions). Defaulting `app.py` to hybrid would regress two out of five eval queries to fix one. The honest move is to leave the default as semantic-only, document hybrid as available, and ship the targeted weighted-RRF + header-filter tuning before defaulting to it. Both `retrieve()` and `retrieve_hybrid()` are exposed in `embed.py` for anyone who wants to A/B them.
+I tested four configurations on the 5 eval queries; results below.
+
+| Config | Q1 (TAP) | Q2 (Withdrawals) | Q3 (SAP appeal — failure case) | Q4 (Excelsior) | Q5 (CUNYfirst) |
+|---|---|---|---|---|---|
+| Semantic-only | OK | OK (has ORDER OF RETURN) | **Fails** (no probation chunk) | OK | OK (has steps) |
+| Hybrid vanilla (no tuning) | Improved | Regress: drops ORDER OF RETURN, adds Reddit | **Win — probation surfaces** | Neutral | Regress: drops steps, adds header |
+| Hybrid w=1.5 + header filter | Improved | Still regresses | **Loses probation win** | Neutral | Steps restored |
+| **Hybrid w=1.0 + header filter** | **Improved** | Still regresses | **Win — probation surfaces** | Neutral | **Steps restored** |
+
+**What the tunings actually showed.**
+
+- **`semantic_weight=1.5` was too aggressive.** It tilted the fusion enough to make semantic-only's rank-1 chunk (`sap_policy#9`, RE-ESTABLISHING ELIGIBILITY) outweigh BM25's rank-5 contribution (`sap_policy#8`, FINANCIAL AID PROBATION). The probation chunk dropped out of top-5 — i.e., the tuning broke the win the entire exercise was supposed to preserve. *Lesson: when one system has a unique correct answer that only ranks moderately, weighting against it can erase the very signal you're trying to fuse in.*
+- **The header filter alone (no weight change) is the right tuning for this corpus.** It removes the structural noise (Q5's regression — the `cunyfirst_facts#0` header chunk that was BM25's rank-1 hit) without disturbing the rank arithmetic. With it, Q3's probation chunk stays in top-5 and Q5's step-by-step instructions chunk comes back.
+- **Q2's regression cannot be fixed by either tuning.** The Reddit anecdote that displaces the ORDER OF RETURN list is *not* a header (so the filter doesn't catch it) and it ranks too high in BM25 for moderate weight adjustments to suppress. Fixing it would require either much higher semantic weights (which kills Q3) or a per-source priority signal (e.g., deboost forum content for policy queries), which is out of scope for this stretch.
+
+**Final verdict.** Tuned hybrid (`retrieve_hybrid(query, filter_bm25_headers=True)`) is a **net win over semantic-only** on this eval set: 1 clear win (Q3 — the documented failure case), 1 improvement (Q1), 1 neutral (Q4), 1 wash (Q5), 1 partial regression (Q2). The wins fix a documented failure; the remaining regression is honest and traceable to a specific corpus property (a Reddit chunk with high keyword density but low semantic relevance).
+
+**App default.** I'm keeping `app.py` on semantic-only by default and leaving `retrieve_hybrid()` available as an opt-in. Reasoning: the Q3 win is real but the Q2 regression loses an enumerated answer-critical list (the federal-aid return order), and on a corpus this small, swapping one win for one regression isn't a clear enough delta to justify changing the default for everyone. Better: ship hybrid as an opt-in for users (or a future per-query router) and document the tradeoff transparently here.
 
 **Reproduce:** `ai201_env/bin/python compare_retrievers.py`
 

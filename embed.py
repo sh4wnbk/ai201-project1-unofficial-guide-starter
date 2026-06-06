@@ -69,6 +69,13 @@ def _tokenize(s: str) -> list[str]:
     return re.findall(r"[a-z0-9]+", s.lower())
 
 
+def _is_header_chunk(text: str) -> bool:
+    cleaned = re.sub(r"^\s*(SOURCE|DOCUMENT|SCRAPED):.*$", "", text, flags=re.MULTILINE)
+    cleaned = re.sub(r"^\s*[=\-_]{3,}\s*$", "", cleaned, flags=re.MULTILINE)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return len(cleaned) < 100
+
+
 def _get_bm25() -> tuple[BM25Okapi, list[dict]]:
     global _bm25_index, _bm25_chunks
     if _bm25_index is None:
@@ -78,26 +85,39 @@ def _get_bm25() -> tuple[BM25Okapi, list[dict]]:
     return _bm25_index, _bm25_chunks
 
 
-def retrieve_bm25(query: str, k: int = 5) -> list[dict]:
+def retrieve_bm25(
+    query: str, k: int = 5, filter_headers: bool = False
+) -> list[dict]:
     bm25, chunks = _get_bm25()
     scores = bm25.get_scores(_tokenize(query))
-    top = sorted(range(len(scores)), key=lambda i: -scores[i])[:k]
-    return [
-        {
-            "text": chunks[i]["text"],
-            "source": chunks[i]["source"],
-            "chunk_index": chunks[i]["chunk_index"],
-            "bm25_score": float(scores[i]),
-        }
-        for i in top
-    ]
+    ranked = sorted(range(len(scores)), key=lambda i: -scores[i])
+    out: list[dict] = []
+    for i in ranked:
+        if filter_headers and _is_header_chunk(chunks[i]["text"]):
+            continue
+        out.append(
+            {
+                "text": chunks[i]["text"],
+                "source": chunks[i]["source"],
+                "chunk_index": chunks[i]["chunk_index"],
+                "bm25_score": float(scores[i]),
+            }
+        )
+        if len(out) >= k:
+            break
+    return out
 
 
 def retrieve_hybrid(
-    query: str, k: int = 5, candidates: int = 20, rrf_k: int = 60
+    query: str,
+    k: int = 5,
+    candidates: int = 20,
+    rrf_k: int = 60,
+    semantic_weight: float = 1.0,
+    filter_bm25_headers: bool = False,
 ) -> list[dict]:
     semantic_hits = retrieve(query, k=candidates)
-    bm25_hits = retrieve_bm25(query, k=candidates)
+    bm25_hits = retrieve_bm25(query, k=candidates, filter_headers=filter_bm25_headers)
 
     def cid(h: dict) -> str:
         return f"{h['source']}::{h['chunk_index']}"
@@ -107,7 +127,7 @@ def retrieve_hybrid(
 
     for rank, hit in enumerate(semantic_hits, start=1):
         key = cid(hit)
-        rrf_scores[key] = rrf_scores.get(key, 0.0) + 1.0 / (rrf_k + rank)
+        rrf_scores[key] = rrf_scores.get(key, 0.0) + semantic_weight / (rrf_k + rank)
         chunk_map[key] = hit
 
     for rank, hit in enumerate(bm25_hits, start=1):

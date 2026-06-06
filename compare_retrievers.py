@@ -24,15 +24,26 @@ def main() -> None:
         for j, h in enumerate(retrieve_bm25(query, k=K), 1):
             print(fmt_hit(j, h, "bm25_score"))
 
-        print("\n[HYBRID (RRF)]")
+        print("\n[HYBRID — vanilla RRF (weight 1.0, no header filter)]")
         for j, h in enumerate(retrieve_hybrid(query, k=K), 1):
             print(fmt_hit(j, h, "rrf_score"))
 
+        print("\n[HYBRID — tuned (header-filtered BM25, equal weights)]")
+        for j, h in enumerate(
+            retrieve_hybrid(query, k=K, filter_bm25_headers=True), 1
+        ):
+            print(fmt_hit(j, h, "rrf_score"))
+
         sem_ids = {f"{h['source']}#{h['chunk_index']}" for h in retrieve(query, k=K)}
-        hyb_ids = {f"{h['source']}#{h['chunk_index']}" for h in retrieve_hybrid(query, k=K)}
-        added = hyb_ids - sem_ids
-        dropped = sem_ids - hyb_ids
-        print(f"\n  Hybrid changed top-{K}: +{len(added)} added, -{len(dropped)} dropped")
+        tuned_ids = {
+            f"{h['source']}#{h['chunk_index']}"
+            for h in retrieve_hybrid(query, k=K, filter_bm25_headers=True)
+        }
+        added = tuned_ids - sem_ids
+        dropped = sem_ids - tuned_ids
+        print(
+            f"\n  Tuned hybrid vs semantic-only: +{len(added)} added, -{len(dropped)} dropped"
+        )
         if added:
             print(f"    added:   {sorted(added)}")
         if dropped:
