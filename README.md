@@ -302,56 +302,74 @@ Parking is not covered in any of the indexed documents, so the system prompt's r
 
 ## Query Interface
 
-Built with Gradio (`gradio==6.16.0`). The UI has three visible regions:
+Built with Gradio (`gradio==6.16.0`). The UI is a multi-turn chat with click-to-load prompt cards.
 
-| Field | Type | Purpose |
+| Region | Type | Purpose |
 |---|---|---|
-| **Your question** | Textbox (2 lines, editable) | Free-text input. Submits on Enter or via the **Ask** button. |
-| **Answer** | Textbox (8 lines, read-only) | Gemini's response text. Plain prose, no inline citations. |
-| **Sources** | Static "### Sources" heading + Markdown panel | Numbered list of the 5 retrieved chunks: source filename, cosine distance, and a 200-char preview. Visible from page load with a placeholder before the first query. |
+| **Conversation** | `gr.Chatbot` (height 400px) | Multi-turn chat. Each user message and assistant reply is shown in order. Conversation history is passed back to Gemini on every turn for reference resolution. |
+| **Your question** | Textbox (2 lines, editable) | Free-text input. Submits on Enter or via the **Ask** button. Cleared after each submission. |
+| **Ask / Clear conversation** | Buttons | Submit current question, or reset the chat history. |
+| **Sources (latest turn)** | Static heading + Markdown panel | Numbered list of the 7 retrieved chunks for the *most recent* turn: source filename, cosine distance, and a 200-char preview. |
+| **Demo Prompts** | Three accordions of click-to-load cards | (a) Evaluation Queries (the 5 from `planning.md`), (b) Out-of-Scope Refusal Test (parking permit), (c) Multi-Turn Follow-up Demo (SAP appeal → "what happens if my appeal is granted?"). Clicking a card populates the input but does NOT auto-submit, so the demo recorder controls timing for screenshots and rate-limit pacing. |
 
-### Sample interaction transcript
+### Sample interaction transcript — single turn
 
 ```
-[USER types]
-How do I appeal a SAP suspension at Lehman?
+[USER types]   How do I appeal a SAP suspension at Lehman?
+[USER clicks]  Ask
 
-[USER clicks Ask]
-
-[ANSWER panel renders]
-To appeal a SAP suspension at Lehman College, undergraduate
-students should submit an electronic SAP appeal at
-lehman.smapply.io/prog/undergraduate_appeals/. Graduate students
-should submit a typed written appeal via email to
-Takiyah.Ali@lehman.cuny.edu.
+[CONVERSATION panel renders]
+USER: How do I appeal a SAP suspension at Lehman?
+ASSISTANT:
+To appeal a SAP suspension at Lehman College, undergraduate students
+should submit an electronic SAP appeal at
+lehman.smapply.io/prog/undergraduate_appeals/. Graduate students should
+submit a typed written appeal via email to Takiyah.Ali@lehman.cuny.edu.
 
 The SAP appeal must include:
 *   A detailed explanation of mitigating circumstances (such as
-    personal illness/injury, family illness/death, loss of
-    employment, or academic program changes).
+    personal illness/injury, family illness/death, loss of employment,
+    or academic program changes).
 *   Supporting documentation (such as medical records, a death
     certificate, or court/legal records).
-*   A discussion of changes in circumstances and personal
-    adjustments that will help maintain SAP in the future.
+*   A discussion of changes in circumstances and personal adjustments
+    that will help maintain SAP in the future.
 *   An academic plan for achieving and maintaining future SAP
     requirements.
 
-A SAP review can be requested after any term in which aid was
-suspended.
-
 [SOURCES panel renders]
-**Sources (top 5)**
+**Sources (top 7)**
+1. `lehman_sap_policy.txt` (dist 0.386) — RE-ESTABLISHING ELIGIBILITY
+2. `lehman_sap_policy.txt` (dist 0.409) — DEADLINE + HOW TO SUBMIT
+3. `lehman_sap_policy.txt` (dist 0.423) — doc header
+4. `lehman_sap_policy.txt` (dist 0.447) — THE SAP APPEAL MUST INCLUDE
+5. `lehman_sap_policy.txt` (dist 0.464) — FINANCIAL AID SUSPENSION
+6. `lehman_sap_policy.txt` (dist 0.533) — FINANCIAL AID PROBATION
+7. `lehman_sap_policy.txt` (dist 0.538) — ANNUAL SAP REVIEW
+```
 
-1. `lehman_sap_policy.txt` (dist 0.386)
-   > RE-ESTABLISHING ELIGIBILITY: - A SAP review can be requested...
-2. `lehman_sap_policy.txt` (dist 0.409)
-   > DEADLINE: THE DEADLINE TO SUBMIT A SAP APPEAL FOR SPRING 2026...
-3. `lehman_sap_policy.txt` (dist 0.423)
-   > SOURCE: https://www.lehman.edu/financial-aid/sap/ ...
-4. `lehman_sap_policy.txt` (dist 0.447)
-   > THE SAP APPEAL MUST INCLUDE: - Detailed explanation of...
-5. `lehman_sap_policy.txt` (dist 0.464)
-   > FINANCIAL AID SUSPENSION: Failure to satisfy any SAP criteria...
+### Sample interaction transcript — multi-turn follow-up
+
+```
+[USER turn 2]  What happens if my appeal is granted?
+[USER clicks]  Ask
+
+[CONVERSATION panel renders (turn 1 above + turn 2 appended)]
+USER: What happens if my appeal is granted?
+ASSISTANT:
+If your SAP appeal is granted, you will be placed on financial aid
+probation, and your federal aid will be reinstated for one semester.
+Your record will be reviewed at the end of that probationary semester.
+
+[SOURCES panel updates to turn 2's retrieval]
+**Sources (top 7)** — concat-retrieval surfaces the probation chunk
+1. `lehman_sap_policy.txt` (dist 0.382) — DEADLINE + HOW TO SUBMIT
+2. `lehman_sap_policy.txt` (dist 0.399) — RE-ESTABLISHING ELIGIBILITY
+3. `lehman_sap_policy.txt` (dist 0.412) — THE SAP APPEAL MUST INCLUDE
+4. `lehman_sap_policy.txt` (dist 0.418) — doc header
+5. `lehman_sap_policy.txt` (dist 0.452) — FINANCIAL AID SUSPENSION
+6. `lehman_sap_policy.txt` (dist 0.467) — FINANCIAL AID PROBATION
+7. `lehman_withdrawals_policy.txt` (dist 0.523) — ORDER OF RETURN
 ```
 
 ---
@@ -380,54 +398,73 @@ All 5 test questions from `planning.md` run through the live system.
 
 **Root cause (retrieval stage):** Inspecting the top-5 retrieved chunks for this query, all five came from `lehman_sap_policy.txt` and covered: how to submit (chunk 1), what to include (chunk 4), re-establishing eligibility (chunk 9), the document header (chunk 0), and suspension consequences (chunk 6). The "probation after a granted appeal" content lives in a different chunk of the same document — but it ranked sixth or lower because the query embedding for "how do I appeal" lexically clusters around *submission* and *documentation* vocabulary, not *outcome* vocabulary like "probation" or "warning period." With `top_k=5`, the probation chunk was just outside the retrieved window.
 
-**What I would change to fix it:**
+**What I shipped:**
 
-1. **Cheap fix:** bump `TOP_K` from 5 to 7 or 8 — likely pulls the probation chunk into context without diluting precision (every current top hit is from the same document anyway, so there's headroom).
-2. **Better fix:** add query expansion for procedural questions — "how do I X" should also retrieve "what happens after X."
-3. **Best fix for this corpus:** chunk the SAP appeal content as one unit (submission + requirements + outcome) rather than letting `RecursiveCharacterTextSplitter` divide it across boundaries. Docling's `HybridChunker` targets exactly this and is on my stretch list.
+1. **Bumped `TOP_K` from 5 to 7** in both `embed.py` and `app.py`. The probation chunk now retrieves at rank 6 of 7 — exactly inside the window. No other rankings change; Gemini 2.5 Flash's context window has plenty of room for two extra chunks.
+2. **Tightened the ingest-time chunk filter.** The original `<100 raw char` filter let through chunks that were mostly metadata but >100 chars total. The updated filter (`ingest.py:_substantive_len()`) strips `SOURCE:` / `DOCUMENT:` / `SCRAPED:` lines and ASCII divider rows *before* the 100-char check. Drops 3 additional header-only chunks at index time (corpus went 98 → 95).
 
-A second behavioral note from the eval (not a failure, but worth documenting): for the Excelsior income query, the dedicated `lehman_excelsior_scholarship.txt` ranked *below* `lehman_state_aid_faqs.txt`. Both contain the $125k figure, so the answer is still correct, but documents written in explicit Q&A form tend to win retrieval for question-shaped queries over documents written as narrative policy prose.
+**Confirming the fix.** Re-ran all 5 eval queries after the change:
+
+| # | Query | Status after fix |
+|---|---|---|
+| 1 | TAP 5th payment | Accurate (was already); 2 extra useful chunks now in context |
+| 2 | Withdraw all classes | Accurate (was already); no regression |
+| 3 | **SAP appeal** | **Now includes probation outcome.** Probation chunk at rank 6 |
+| 4 | Excelsior income | Accurate (was already); 1 extra useful chunk |
+| 5 | CUNYfirst status | Accurate (was already); no regression |
+
+**A retrospective on what I tried first (and reverted).** Before shipping the simple fix, I prototyped a full hybrid retriever (BM25 alongside semantic, fused via Reciprocal Rank Fusion + tuning experiments). It fixed Q3 but introduced regressions on Q2 and Q5, added ~150 lines and a new dependency, and ended up as an opt-in that didn't ship in the UI. The hybrid experiment confirmed the *diagnosis* (BM25 found the probation chunk via keyword match — validating that the failure was a recall problem) but the cheap fix I had originally proposed in this very section turned out to be the right answer. Lesson taken: always try the one-line fix first.
+
+**A second behavioral note from the eval** (not a failure, but worth documenting): for the Excelsior income query, the dedicated `lehman_excelsior_scholarship.txt` ranked *below* `lehman_state_aid_faqs.txt`. Both contain the $125k figure, so the answer is still correct, but documents written in explicit Q&A form tend to win retrieval for question-shaped queries over documents written as narrative policy prose.
 
 ---
 
-## Stretch Feature: Retrieval Tuning (top-k bump + ingest-time header filter)
+## Stretch Feature: Conversational Memory (multi-turn chat)
 
-**Motivation.** Two issues surfaced from the eval:
-- Q3 (SAP appeal) was a partial-accuracy failure: the post-appeal *probation* chunk ranked 6th in semantic retrieval, just outside top-5.
-- Header-only chunks (the `SOURCE:` / `DOCUMENT:` / `SCRAPED:` metadata blocks at the top of each source file) occasionally surfaced in retrieval despite carrying no answer content.
+**What I built.** Replaced the single-turn textbox/answer UI with a `gr.Chatbot` that supports multi-turn conversations. Students can ask follow-up questions ("what about if I withdraw late?", "what happens if my appeal is granted?") and the system uses the conversation history both for resolving references AND for sharpening retrieval on context-dependent follow-ups.
 
-**What I tried first (and reverted).** I prototyped a full hybrid retriever (BM25 alongside semantic, fused via Reciprocal Rank Fusion). It fixed Q3 but introduced new regressions: BM25 surfaced a Reddit anecdote that displaced the ORDER OF RETURN list (Q2), and a document-header chunk that displaced the CUNYfirst step-by-step instructions (Q5). I tested two tunings to recover — weighted RRF and a BM25-side header filter. Weighting at 1.5x broke Q3 (the very win the exercise was meant to preserve). Header filtering on BM25 results helped Q5 but not Q2. Net: hybrid was a net-positive over semantic-only with the header filter, but the architecture added ~150 lines, a new dependency (`rank-bm25`), corpus-specific tuning knobs, and ended up as an opt-in that didn't ship in the UI.
+**Architecture (kept minimal).**
 
-**The simpler fix I shipped instead.** Two minimal changes, ~10 net lines of code:
+- **State:** Gradio's `gr.Chatbot` value is the message list (`{role, content}` dicts). No `gr.State`, no LangChain `ConversationBufferMemory` — both unnecessary for what is structurally a Python list.
+- **Per-turn retrieval (smarter concat variant):** Each new user message is concatenated with the immediately prior user message to form the retrieval query. So when turn 2 is *"What happens if my appeal is granted?"* after turn 1's *"How do I appeal a SAP suspension at Lehman?"*, the retrieval query becomes `"How do I appeal a SAP suspension at Lehman? What happens if my appeal is granted?"`. That single concat surfaces topic-relevant chunks (here: the FINANCIAL AID PROBATION chunk at rank 6) that a literal "what happens if my appeal is granted?" query in isolation would miss.
+- **Per-turn generation:** Gemini receives the full prior conversation as role-tagged `contents` history, plus the current user message augmented with the *current turn's* freshly-retrieved Context block. Old chunks are not re-sent — keeps the context window clean across long conversations.
+- **System prompt:** One extra paragraph instructs the model to use conversation history *only* for resolving references like "it" / "my appeal" / "what about late?" — and to ground each answer in the *current* turn's context block, not in prior turns' retrieved chunks.
+- **Sources panel:** Always shows sources for the most recent turn only.
+- **Clear conversation button:** Resets state between demo scenarios.
+- **Prompt cards in the UI:** Three demarcated sections of click-to-load prompt cards under the chat — (a) the 5 eval queries, (b) the out-of-scope refusal test, (c) the multi-turn demo pair — so the demo recorder can click instead of type, and the grader can replicate each test verbatim.
 
-1. **Bump `top_k` from 5 to 7.** The SAP probation chunk was already ranking 6th in semantic — just outside the window. Returning 7 chunks captures it without changing any other ranking. Gemini 2.5 Flash has plenty of context-window headroom for two extra chunks.
-2. **Tighten the ingest-time header filter.** The original `<100 char` filter operated on raw text, so chunks that were mostly metadata but >100 chars total still survived. The updated filter (in `ingest.py`'s `_substantive_len()`) strips `SOURCE:` / `DOCUMENT:` / `SCRAPED:` lines and ASCII divider rules *before* the 100-char check. Drops 3 additional header-only chunks at index time — including the `cunyfirst_facts#0` chunk that caused the hybrid-Q5 regression.
+**Why this stretch fits the corpus.** Procedural questions ("how do I X?") naturally chain into outcome questions ("and what happens after?"). The corpus is structured around procedures (FAFSA process, TAP eligibility steps, SAP appeals, withdrawal aftermath), so multi-turn is the use case students will hit first in practice.
 
-**Results after the simpler fix.**
+**Demo transcript — multi-turn surfaces the documented failure case via natural follow-up:**
 
-| # | Query | Top-5 (semantic, k=5) | Top-7 (semantic, k=7) | Verdict |
-|---|---|---|---|---|
-| 1 | TAP 5th payment | All from `tap_program` | + `state_aid_faqs#1` (TAP FAQ), `tap_program#4` (SEEK note) | Improved (extra context) |
-| 2 | Withdraw all classes | Has ORDER OF RETURN at #4 | Same + Reddit anecdotes at #6–7 (low priority) | No change to top-5 |
-| 3 | **SAP appeal** | **Missed probation chunk** | **Probation chunk now at #6** | **Fixed** |
-| 4 | Excelsior income | Excelsior + state-aid FAQs | + `excelsior#2` (eligibility requirements) | Improved (extra context) |
-| 5 | CUNYfirst status | Step-by-step at #1, FAQ at #2 | Same + HESC + special-circumstances how-to | No change to top-5 |
+```
+USER (turn 1): How do I appeal a SAP suspension at Lehman?
 
-Chunk count: **98 → 95** (3 additional header-only chunks dropped by the tightened filter).
+ASSISTANT: To appeal a SAP suspension at Lehman College, undergraduate
+students should submit an electronic SAP appeal at
+lehman.smapply.io/prog/undergraduate_appeals/. Graduate students should
+submit a typed written appeal via email to Takiyah.Ali@lehman.cuny.edu.
 
-**Why this is a better stretch than hybrid was.**
+The SAP appeal must include:
+*   A detailed explanation of mitigating circumstances ...
+*   Supporting documentation ...
+*   A discussion of changes in circumstances ...
+*   An academic plan for achieving and maintaining future SAP requirements.
 
-- Targets the actual problem — a top-k cutoff and a chunk-hygiene gap — rather than introducing a parallel retrieval system to paper over both.
-- Fixes the documented failure case **in the shipped UI**, not just in an opt-in comparison script.
-- Zero new dependencies. Zero new code paths. Zero corpus-specific tuning knobs.
-- Reflects the principle the course slides repeated: *the secret sauce isn't the model* — it's the pipeline hygiene.
+USER (turn 2): What happens if my appeal is granted?
 
-### What did the hybrid experiment teach me
+ASSISTANT: If your SAP appeal is granted, you will be placed on financial
+aid probation, and your federal aid will be reinstated for one semester.
+Your record will be reviewed at the end of that probationary semester.
+```
 
-Even though I reverted it, the experiment wasn't wasted:
-- Confirmed the failure was a *recall* problem (BM25 located the probation chunk via keyword match, validating the diagnosis).
-- Showed concretely how BM25 fails on a small corpus when the query term is high-frequency across documents (`withdraw`, `CUNYFIRST` appear in many chunks, so BM25 over-ranks low-signal occurrences).
-- Forced me to test the cheap fix I had originally proposed in the failure analysis. The cheap fix won. *Always try the one-line fix first.*
+The turn-2 retrieval query (concat of both messages) surfaced `lehman_sap_policy.txt#8` — the FINANCIAL AID PROBATION chunk — and the model correctly resolved "my appeal" via the conversation history.
+
+**What this stretch does NOT do.**
+
+- No query rewriting via an extra LLM call (cheap concat is good enough on this corpus).
+- No retrieval over the chat history itself.
+- No persistence across browser sessions — conversation lives in the chatbot's state for the active session only.
 
 ---
 

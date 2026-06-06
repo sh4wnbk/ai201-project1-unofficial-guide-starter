@@ -139,6 +139,42 @@ For a real deployment serving Lehman students, I would weigh:
 
 ---
 
+## Stretch Feature: Conversational Memory (multi-turn chat)
+
+**What.** Replace the single-turn textbox interface with a multi-turn chat (`gr.Chatbot`) so students can ask follow-up questions ("what happens if my appeal is granted?") after their initial query. The system retains conversation history and uses it to resolve references in follow-ups.
+
+**Why this one.** A real student rarely asks one self-contained question. The corpus is procedural ("how do I X?" → "and after that?" → "what if it fails?"), so follow-ups are the natural use case. It's also the lowest-lift of the four stretch options — no new dependencies, no parallel retrieval system, no per-corpus tuning knobs.
+
+**Approach.**
+
+1. **State:** use `gr.Chatbot(type="messages")` to hold history as a list of `{role, content}` dicts. Native to Gradio — no LangChain `ConversationBufferMemory` needed (we'd be pulling in a heavy dep for what is a Python list).
+2. **Retrieval per turn (smarter concat variant):** for each new user message, retrieve fresh top-7 chunks using a query built from the **immediately prior user message + the current message** concatenated. So when turn 2 is "what about if it's late?", the retrieval query becomes "what happens if I withdraw from all my classes? what about if it's late?" — pulling withdrawal-policy chunks instead of generic "late" chunks. Cheap (1 line) and addresses the obvious ambiguous-follow-up failure mode.
+3. **Generation per turn:** Gemini receives the full prior conversation as `contents` history (role-tagged), plus the current turn's user message augmented with the freshly-retrieved context block. Each turn gets fresh chunks; old chunks are not re-sent, keeping the context window clean.
+4. **System prompt:** Add one line telling the model it may use conversation history to resolve references like "it" or "that," but must still ground each answer in the *current* turn's context block (no carrying over stale facts from prior chunks).
+5. **UI:** Add three demarcated sections of click-to-load prompt cards under the chat: (a) the 5 eval queries from this document, (b) the out-of-scope refusal test, (c) a multi-turn demo pair (SAP appeal → "what happens if my appeal is granted?"). Cards populate the input box but do NOT auto-submit — keeps the demo recorder in control of timing for screenshots / rate-limit pacing.
+6. **Clear button:** explicit "Clear conversation" control so the demo recorder can reset between scenarios.
+
+**What this does NOT do:**
+
+- No query rewriting via an extra LLM call (cheap concat instead).
+- No retrieval over the chat history itself (only over the document corpus).
+- No LangChain memory abstractions.
+- No new dependencies.
+
+**Files modified:**
+
+- `app.py` — replace single-turn UI + `answer()` with multi-turn `respond()` + `gr.Chatbot` + prompt cards.
+- `planning.md` (this file) — spec for the stretch.
+- `README.md` — append a "Stretch Feature: Conversational Memory" section.
+
+**Demo scenario for the recording.**
+
+After base eval queries are demonstrated:
+- Click card: *"How do I appeal a SAP suspension at Lehman?"* → submit. Model answers with submission URL + requirements.
+- Click card: *"What happens if my appeal is granted?"* → submit. Model uses (a) the concat-retrieval to surface the FINANCIAL AID PROBATION chunk, and (b) the conversation history to know "my appeal" refers to the SAP appeal just discussed. Answer should describe the one-semester probation outcome.
+
+---
+
 ## Stretch Feature: Retrieval Tuning (two minimal fixes)
 
 **Motivation.** The SAP appeal eval query (Q3) was documented as a partial-accuracy failure: the system's answer omitted the post-appeal *probation* outcome because that chunk ranked just outside top-5. A second behavioral note from the eval: header-only chunks (the `SOURCE:` / `DOCUMENT:` / `SCRAPED:` metadata blocks at the top of each source file) occasionally surfaced in retrieval despite carrying no answer content.

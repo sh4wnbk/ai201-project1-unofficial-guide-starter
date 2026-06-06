@@ -18,17 +18,25 @@ REFUSAL = "I don't have enough information on that"
 
 SYSTEM_PROMPT = f"""You are a financial-aid assistant for Lehman College (CUNY) students.
 
-Answer using ONLY the information in the Context block below. The context is labeled
-[Source N: filename] for each chunk. Do not use any prior knowledge, general knowledge,
-training data, or plausible-sounding inference. Do not fabricate dates, amounts,
-deadlines, URLs, eligibility rules, or procedures that are not explicitly stated in
-the context.
+Answer using ONLY the information in the Context block provided for the CURRENT turn.
+The context is labeled [Source N: filename] for each chunk. Do not use any prior
+knowledge, general knowledge, training data, or plausible-sounding inference. Do not
+fabricate dates, amounts, deadlines, URLs, eligibility rules, or procedures that are
+not explicitly stated in the current context.
 
-If the context does not contain enough information to answer the question, respond
-with EXACTLY this sentence and nothing else: "{REFUSAL}".
+You may receive a conversation history of prior questions and answers in this chat.
+Use that history ONLY to resolve references like "it," "that," "my appeal," or "what
+about late?" — i.e., to understand what the user is asking. Do NOT carry forward
+facts from prior turns' context that are not also present in the current turn's
+Context block. If a follow-up question requires information from a prior turn's
+context that is not in the current turn's context, treat it as not enough information.
 
-When the context is sufficient, write a direct, plain-prose answer. Do not include
-inline citations or "[Source N]" markers — the UI shows sources in a separate panel.
+If the current context does not contain enough information to answer the question,
+respond with EXACTLY this sentence and nothing else: "{REFUSAL}".
+
+When the current context is sufficient, write a direct, plain-prose answer. Do not
+include inline citations or "[Source N]" markers — the UI shows sources in a
+separate panel.
 """
 
 _client: genai.Client | None = None
@@ -63,14 +71,27 @@ def format_sources(chunks: list[dict]) -> str:
     return "\n".join(lines)
 
 
-def answer(query: str) -> tuple[str, str]:
+def answer(query: str, history: list[dict] | None = None) -> tuple[str, str]:
     if not query or not query.strip():
         return "", ""
-    chunks = retrieve(query, k=TOP_K)
+    history = history or []
+
+    prior_user_msgs = [t["content"] for t in history if t["role"] == "user"]
+    last_prior = prior_user_msgs[-1] if prior_user_msgs else ""
+    retrieval_query = f"{last_prior} {query}".strip() if last_prior else query
+
+    chunks = retrieve(retrieval_query, k=TOP_K)
+
+    contents = []
+    for turn in history:
+        role = "user" if turn["role"] == "user" else "model"
+        contents.append({"role": role, "parts": [{"text": turn["content"]}]})
     user_msg = f"Context:\n{format_context(chunks)}\n\nQuestion: {query}"
+    contents.append({"role": "user", "parts": [{"text": user_msg}]})
+
     response = _get_client().models.generate_content(
         model=MODEL,
-        contents=user_msg,
+        contents=contents,
         config=types.GenerateContentConfig(
             system_instruction=SYSTEM_PROMPT,
             temperature=TEMPERATURE,
@@ -79,20 +100,79 @@ def answer(query: str) -> tuple[str, str]:
     return response.text.strip(), format_sources(chunks)
 
 
+SOURCES_PLACEHOLDER = "*Ask a question above to see retrieved sources here.*"
+
+
+def respond(message: str, history: list[dict]) -> tuple[str, list[dict], str]:
+    if not message.strip():
+        return "", history, SOURCES_PLACEHOLDER
+    answer_text, sources_md = answer(message, history)
+    new_history = history + [
+        {"role": "user", "content": message},
+        {"role": "assistant", "content": answer_text},
+    ]
+    return "", new_history, sources_md
+
+
+def clear_chat() -> tuple[list, str]:
+    return [], SOURCES_PLACEHOLDER
+
+
+EVAL_QUERY_CARDS = [
+    ["How many credits do I need to complete for my 5th TAP payment?"],
+    ["What happens to my financial aid if I withdraw from all my classes?"],
+    ["How do I appeal a SAP suspension at Lehman?"],
+    ["What is the income limit to qualify for the Excelsior Scholarship?"],
+    ["How do I check my financial aid status in CUNYfirst?"],
+]
+REFUSAL_QUERY_CARDS = [["How do I apply for a parking permit at Lehman?"]]
+MULTITURN_QUERY_CARDS = [
+    ["How do I appeal a SAP suspension at Lehman?"],
+    ["What happens if my appeal is granted?"],
+]
+
+
 with gr.Blocks(title="Lehman Financial Aid Assistant") as demo:
     gr.Markdown("# Lehman Financial Aid Assistant")
     gr.Markdown(
         "Ask about FAFSA, TAP, SAP, Excelsior, withdrawals, and CUNYfirst at Lehman College. "
-        "Answers are grounded only in the indexed documents."
+        "Answers are grounded only in the indexed documents. Follow-up questions are supported "
+        "— prior turns are used to resolve references like *it* or *my appeal*."
     )
-    query_in = gr.Textbox(label="Your question", lines=2, placeholder="e.g. What is the income limit for the Excelsior Scholarship?")
-    ask_btn = gr.Button("Ask", variant="primary")
-    answer_out = gr.Textbox(label="Answer", lines=8, interactive=False)
-    gr.Markdown("### Sources")
-    sources_out = gr.Markdown(value="*Ask a question above to see retrieved sources here.*")
 
-    ask_btn.click(answer, inputs=query_in, outputs=[answer_out, sources_out])
-    query_in.submit(answer, inputs=query_in, outputs=[answer_out, sources_out])
+    chatbot = gr.Chatbot(height=400, label="Conversation")
+    msg = gr.Textbox(
+        label="Your question",
+        lines=2,
+        placeholder="e.g. What is the income limit for the Excelsior Scholarship?",
+    )
+    with gr.Row():
+        ask_btn = gr.Button("Ask", variant="primary")
+        clear_btn = gr.Button("Clear conversation")
+
+    gr.Markdown("### Sources (latest turn)")
+    sources_out = gr.Markdown(value=SOURCES_PLACEHOLDER)
+
+    gr.Markdown("---")
+    gr.Markdown("### Demo Prompts — click any card to load it into the input above")
+
+    with gr.Accordion("Evaluation Queries (5 from planning.md)", open=True):
+        gr.Examples(examples=EVAL_QUERY_CARDS, inputs=[msg], label="")
+
+    with gr.Accordion("Out-of-Scope Refusal Test", open=False):
+        gr.Examples(examples=REFUSAL_QUERY_CARDS, inputs=[msg], label="")
+
+    with gr.Accordion("Multi-Turn Follow-up Demo", open=False):
+        gr.Markdown(
+            "Click the first card and submit. Then click the second card and submit. "
+            "The follow-up uses conversation history to resolve *my appeal* and "
+            "concat-retrieval to surface the FINANCIAL AID PROBATION chunk."
+        )
+        gr.Examples(examples=MULTITURN_QUERY_CARDS, inputs=[msg], label="")
+
+    ask_btn.click(respond, inputs=[msg, chatbot], outputs=[msg, chatbot, sources_out])
+    msg.submit(respond, inputs=[msg, chatbot], outputs=[msg, chatbot, sources_out])
+    clear_btn.click(clear_chat, outputs=[chatbot, sources_out])
 
 
 if __name__ == "__main__":
