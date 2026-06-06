@@ -1,7 +1,9 @@
+import re
 from pathlib import Path
 
 import chromadb
 from chromadb.utils import embedding_functions
+from rank_bm25 import BM25Okapi
 
 from ingest import get_chunks
 
@@ -56,6 +58,72 @@ def retrieve(query: str, k: int = 5) -> list[dict]:
         for doc, meta, dist in zip(
             result["documents"][0], result["metadatas"][0], result["distances"][0]
         )
+    ]
+
+
+_bm25_index: BM25Okapi | None = None
+_bm25_chunks: list[dict] | None = None
+
+
+def _tokenize(s: str) -> list[str]:
+    return re.findall(r"[a-z0-9]+", s.lower())
+
+
+def _get_bm25() -> tuple[BM25Okapi, list[dict]]:
+    global _bm25_index, _bm25_chunks
+    if _bm25_index is None:
+        _bm25_chunks = get_chunks()
+        corpus_tokens = [_tokenize(c["text"]) for c in _bm25_chunks]
+        _bm25_index = BM25Okapi(corpus_tokens)
+    return _bm25_index, _bm25_chunks
+
+
+def retrieve_bm25(query: str, k: int = 5) -> list[dict]:
+    bm25, chunks = _get_bm25()
+    scores = bm25.get_scores(_tokenize(query))
+    top = sorted(range(len(scores)), key=lambda i: -scores[i])[:k]
+    return [
+        {
+            "text": chunks[i]["text"],
+            "source": chunks[i]["source"],
+            "chunk_index": chunks[i]["chunk_index"],
+            "bm25_score": float(scores[i]),
+        }
+        for i in top
+    ]
+
+
+def retrieve_hybrid(
+    query: str, k: int = 5, candidates: int = 20, rrf_k: int = 60
+) -> list[dict]:
+    semantic_hits = retrieve(query, k=candidates)
+    bm25_hits = retrieve_bm25(query, k=candidates)
+
+    def cid(h: dict) -> str:
+        return f"{h['source']}::{h['chunk_index']}"
+
+    rrf_scores: dict[str, float] = {}
+    chunk_map: dict[str, dict] = {}
+
+    for rank, hit in enumerate(semantic_hits, start=1):
+        key = cid(hit)
+        rrf_scores[key] = rrf_scores.get(key, 0.0) + 1.0 / (rrf_k + rank)
+        chunk_map[key] = hit
+
+    for rank, hit in enumerate(bm25_hits, start=1):
+        key = cid(hit)
+        rrf_scores[key] = rrf_scores.get(key, 0.0) + 1.0 / (rrf_k + rank)
+        chunk_map.setdefault(key, hit)
+
+    top = sorted(rrf_scores.items(), key=lambda x: -x[1])[:k]
+    return [
+        {
+            "text": chunk_map[key]["text"],
+            "source": chunk_map[key]["source"],
+            "chunk_index": chunk_map[key]["chunk_index"],
+            "rrf_score": score,
+        }
+        for key, score in top
     ]
 
 

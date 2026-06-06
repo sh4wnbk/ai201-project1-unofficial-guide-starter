@@ -390,6 +390,37 @@ A second behavioral note from the eval (not a failure, but worth documenting): f
 
 ---
 
+## Stretch Feature: Hybrid Search (BM25 + Semantic via RRF)
+
+**What I built.** A second retriever (`retrieve_bm25`) using `rank_bm25`'s `BM25Okapi` over the same 98 chunks, plus a fusion function (`retrieve_hybrid`) that combines semantic and BM25 candidate sets via **Reciprocal Rank Fusion** with the standard `k=60` constant. Each side contributes its top-20 candidates; RRF fuses by rank, not raw score, so it sidesteps the cosine-vs-BM25 score-scale mismatch. Implementation lives in `embed.py`; a comparison script at `compare_retrievers.py` runs the 5 eval queries through all three retrievers (semantic-only, BM25-only, hybrid) and prints a per-query diff.
+
+**Hypothesis.** The documented SAP-appeal failure was a *recall* problem driven by vocabulary mismatch — the relevant "probation" chunk ranked outside top-5 because the query "how do I appeal" embeds far from outcome-vocabulary like *probation* or *warning period*. BM25, matching surface keywords, should surface that chunk; hybrid should pull it into top-5 without losing the semantic wins on the other queries.
+
+**Results.**
+
+| # | Query | Hybrid effect on top-5 | Verdict |
+|---|---|---|---|
+| 1 | TAP 5th payment | Added `tap_program#6` (continuation of payment chart) + `state_aid_faqs#1` (TAP FAQ); dropped `#2` (Part-time TAP) and `#9` (Summer TAP) | Mild improvement — payment chart now contiguous |
+| 2 | Withdraw all classes | **Dropped `withdrawals#3` (the ORDER OF RETURN list)**, added a Reddit anecdote chunk | Mild regression |
+| 3 | **SAP appeal** | **Added `sap_policy#8` (FINANCIAL AID PROBATION) at rank 5** — the exact chunk needed to fix the documented failure case | **Clear win** |
+| 4 | Excelsior income | No change | Neutral |
+| 5 | CUNYfirst aid status | **Dropped `faqs#6` (the step-by-step instructions)**, added the document header `cunyfirst_facts#0` | Mild regression |
+
+**Verdict.** Hybrid is a **targeted fix, not a universal upgrade.** It fixed exactly the failure case I designed it to address: the FINANCIAL AID PROBATION chunk that lives at `lehman_sap_policy.txt#8` jumped from rank 6+ (semantic-only) to rank 5 (hybrid), which means the grounded answer would now include the post-appeal probation outcome that the original system missed. But on two other queries (Withdrawals, CUNYfirst) BM25 pulled in surface-keyword matches that lack semantic depth — a Reddit personal anecdote because it contains "withdraw," and a document header because it contains "CUNYFIRST" — at the cost of more substantive chunks.
+
+**Why this pattern is consistent with theory.** BM25 helps when query terms are rare and meaningful (*probation*, *eligibility chart*); it hurts when query terms are common across the corpus (*withdraw*, *CUNYfirst*) because keyword matches no longer differentiate substance from surface mentions. Hybrid via RRF averages the two systems' ranks — if one system gets the right chunk at rank 1 and the other ranks a noisy chunk at rank 1, the noisy chunk leaks into top-5 too.
+
+**What I would change to make hybrid a default.** Two cheap, complementary fixes:
+
+1. **Weighted RRF** — multiply the semantic side's RRF contribution by 1.5–2x. Tilts the fusion toward semantic, lets BM25 only override when its signal is strong enough to outvote the weight.
+2. **Filter the BM25 candidate set** — drop chunks shorter than ~200 chars or that match a "header pattern" (lines like `SOURCE:`, `DOCUMENT:`, `SCRAPED:` near the top). Most of the BM25-induced regressions came from header chunks that contain the query keyword but no answer content.
+
+**Why I am not switching the app's default.** The win on Q3 is real, but the two regressions cost real information (an enumerated list of return order, step-by-step CUNYfirst instructions). Defaulting `app.py` to hybrid would regress two out of five eval queries to fix one. The honest move is to leave the default as semantic-only, document hybrid as available, and ship the targeted weighted-RRF + header-filter tuning before defaulting to it. Both `retrieve()` and `retrieve_hybrid()` are exposed in `embed.py` for anyone who wants to A/B them.
+
+**Reproduce:** `ai201_env/bin/python compare_retrievers.py`
+
+---
+
 ## Spec Reflection
 
 **One way the spec helped during implementation:**

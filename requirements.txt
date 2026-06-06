@@ -4,6 +4,7 @@ google-genai==2.8.0
 python-dotenv==1.0.1
 langchain-text-splitters==0.3.8
 numpy<2
+rank-bm25==0.2.2
 
 # Query interface
 gradio==6.16.0

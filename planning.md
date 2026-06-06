@@ -139,6 +139,46 @@ For a real deployment serving Lehman students, I would weigh:
 
 ---
 
+## Stretch Feature: Hybrid Search (BM25 + Semantic)
+
+**Motivation.** The SAP appeal eval query (Q3) is documented as a partial-accuracy failure in the README: the system's answer omitted the post-appeal probation outcome because the "probation" chunk ranked below top-5. Inspecting the retrieved set, all 5 hits clustered around *submission* and *documentation* vocabulary, which is semantically close to "how do I appeal." The probation chunk uses different vocabulary ("probation," "warning period") that the semantic embedding ranked further from the query. This is a classic recall failure caused by vocabulary mismatch — exactly what keyword search (BM25) is designed to catch.
+
+**Approach.**
+
+1. Build a BM25 index over the same 98 chunks already in ChromaDB, using the `rank_bm25` library (`BM25Okapi`).
+2. Implement `retrieve_hybrid(query, k=5)` that runs both retrievals in parallel and combines them with **Reciprocal Rank Fusion (RRF)**:
+   `score(doc) = Σ 1 / (k_rrf + rank_in_system_i)` with `k_rrf=60` (standard).
+   RRF is rank-based, not score-based, so it doesn't require normalizing BM25 scores against cosine distances — a common pitfall when combining incompatible scoring systems.
+3. Pull more candidates than top-k from each system (e.g., 20 each) before fusing, so good chunks that rank 15th in semantic but 2nd in BM25 still make the final top-5.
+
+**Comparison protocol.**
+
+Re-run the 5 evaluation queries from this document on three retrievers:
+- Semantic-only (current `retrieve()`)
+- BM25-only
+- Hybrid (RRF over both)
+
+For each query, record top-5 chunk IDs and distances/scores from each retriever, and grade whether the chunk needed for the expected answer appears in top-5. The SAP appeal "probation" chunk is the canonical test case — if hybrid pulls it into top-5 while semantic-only doesn't, that's a measurable win.
+
+**Expected outcome (hypothesis).**
+
+Hybrid should fix the SAP failure case (probation chunk surfaces via BM25 keyword match) and should not regress on the other 4 queries (where the answer chunks already rank well semantically). If hybrid *does* regress, the failure mode and explanation go in the writeup.
+
+**Files to add/modify:**
+
+- `requirements.txt` — add `rank-bm25` pinned to installed version
+- `embed.py` — add BM25 indexer + `retrieve_hybrid(query, k=5)`
+- `compare_retrievers.py` (new) — runs the 5 eval queries on all three retrievers and prints a side-by-side comparison
+- `README.md` — append a "Stretch Feature: Hybrid Search" section reporting results
+- (No changes to `app.py` unless hybrid wins decisively — then switch the default.)
+
+**What this does NOT do:**
+
+- No re-chunking, no new embedding model, no new vector store. Hybrid is purely a retrieval-layer addition.
+- No UI toggle. The point is to compare and write up the result, not to ship a feature flag.
+
+---
+
 ## AI Tool Plan
 
 **Milestone 3 — Ingestion and chunking:**
