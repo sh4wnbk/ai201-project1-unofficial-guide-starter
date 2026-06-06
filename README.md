@@ -116,14 +116,32 @@ Runs entirely offline after first model download. Fast enough for interactive us
 
 ### Production tradeoff reflection
 
-For a real deployment serving Lehman students, I would weigh:
+For a real deployment serving Lehman students, the three swappable layers (embedding model, vector store, generation service) each carry their own decisions.
+
+**Embedding model alternatives:**
 
 - **`text-embedding-3-large` (OpenAI):** Higher accuracy on domain-specific policy text and longer context, but per-query API cost and rate limits make it a poor fit for a free student tool.
 - **`multilingual-e5-large`:** Lehman has a large Spanish-speaking student population. Multilingual support would noticeably improve retrieval for Spanish-phrased queries, which MiniLM handles poorly. This is probably the single biggest accuracy upgrade for *this user base*, not raw benchmark scores.
 - **`bge-large-en-v1.5`:** Strong English retrieval benchmark scores, still runs locally — a drop-in upgrade if accuracy needs improvement without leaving the offline footprint.
 - **Latency:** MiniLM is fast enough for an interactive interface. Larger local models add 2–5s per query, which degrades the perceived responsiveness in the Gradio UI.
 
-The right choice depends on what failure mode hurts most: domain precision (→ larger English model), accessibility (→ multilingual), or cost (→ stay on MiniLM).
+The right embedding choice depends on what failure mode hurts most: domain precision (→ larger English model), accessibility (→ multilingual), or cost (→ stay on MiniLM).
+
+**Vector store alternatives:**
+
+ChromaDB is ideal for development and a small persistent corpus, but a real deployment serving thousands of students concurrently would want managed infrastructure.
+
+- **Pinecone:** Fully managed serverless vector DB with strong multi-tenant isolation and zero DevOps overhead. The case to switch is when the corpus outgrows what fits in a single Chroma instance, the system needs to serve many concurrent users without latency spikes, or there's no engineer to operate the index in-house.
+- **AWS OpenSearch Service + S3 Vectors:** Native AWS path. OpenSearch handles vector + hybrid (semantic + keyword) retrieval; S3 Vectors stores embeddings directly in object storage (up to ~2B vectors per index) at much lower per-vector cost. The case to switch is when the rest of the stack is already in AWS — keeping retrieval, storage, and generation in one account simplifies auth, billing, and compliance.
+
+**Generation service alternatives:**
+
+Currently the system calls Gemini 2.5 Flash directly via the `google-genai` SDK. Two production-grade alternatives:
+
+- **Amazon Bedrock:** Managed access to multiple foundation models (Claude, Llama, Titan, etc.) through a single API. Worth it when A/B-testing models, consolidating billing across model providers, or pairing generation with OpenSearch/S3 Vectors above for a fully AWS-native pipeline.
+- **Direct Anthropic / OpenAI APIs:** Lowest abstraction — pick one model and own the integration. Cheapest path when the model choice is settled and you don't need cross-provider routing.
+
+Across all three layers, the meta-question is the same: **what failure mode hurts most?** Cost (stay local), accuracy on policy prose (larger English embedder + Claude/GPT-4 class generator), accessibility for Spanish speakers (multilingual embedder), or operational simplicity at scale (Pinecone or AWS-native).
 
 ---
 
