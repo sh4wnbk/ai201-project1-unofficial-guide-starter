@@ -377,17 +377,57 @@ Your record will be reviewed at the end of that probationary semester.
 
 ## Evaluation Report
 
-All 5 test questions from `planning.md` run through the live system.
+All 5 test questions from `planning.md` were run through the live system. Summary at the bottom; per-query details below.
 
-| # | Question | Expected answer | System response (summarized) | Retrieval quality | Response accuracy |
-|---|---|---|---|---|---|
-| 1 | How many credits do I need for my 5th TAP payment? | 9 credits completed in the prior term, 33 credits accumulated, GPA of 2.0 | "9 credits and accumulated 33 credits, with a GPA of 2.0" | Relevant (all 5 hits from `lehman_tap_program.txt`) | **Accurate** — minor: omitted the "prior term" qualifier on the 9 credits |
-| 2 | What happens to my financial aid if I withdraw from all my classes? | 60% completion rule, unearned aid returned to federal programs in specific order, future eligibility may be affected | Covers 60% rule, return order, loans being forced into repayment, SAP impact, and future-semester aid loss | Relevant (4/5 from `lehman_withdrawals_policy.txt`, dist 0.170) | **Accurate** — thorough and well-organized |
-| 3 | How do I appeal a SAP suspension at Lehman? | Submit electronic SAP appeal at lehman.smapply.io/prog/undergraduate_appeals/ with documentation; if granted, placed on probation for one semester | Submission URL + grad routing + 4 required appeal components | Relevant (all 5 from `lehman_sap_policy.txt`) | **Partially accurate** — omitted the post-appeal probation outcome |
-| 4 | What is the income limit to qualify for the Excelsior Scholarship? | Household federal AGI at or below $125,000 | "Household federal adjusted gross income can total up to $125,000" | Relevant (top hit from state-aid FAQs, not dedicated Excelsior page — see Failure Case note) | **Accurate** |
-| 5 | How do I check my financial aid status in CUNYfirst? | Log into home.cunyfirst.cuny.edu → Student Center → Financial Aid → Aid Year → Award Summary; also check TO DO list | Full step path + TO DO list discussion | Relevant (top 2 from CUNYfirst guide and FAQ) | **Accurate** |
+| # | Query | Retrieval | Accuracy |
+|---|---|---|---|
+| 1 | TAP 5th payment requirements | Relevant | **Accurate** |
+| 2 | Withdraw from all classes | Relevant | **Accurate** |
+| 3 | SAP appeal at Lehman | Relevant | **Partially accurate** |
+| 4 | Excelsior income limit | Relevant | **Accurate** |
+| 5 | CUNYfirst aid status check | Relevant | **Accurate** |
 
-**Summary:** 4 of 5 accurate, 1 partially accurate. Retrieval quality was **Relevant** on all 5 — every top hit pulled from a topically correct source document. The single failure was a *completeness* gap, not a *correctness* gap.
+### Query 1 — TAP 5th payment requirements
+
+- **Question:** How many credits do I need for my 5th TAP payment?
+- **Expected answer:** 9 credits completed in the prior term, 33 credits accumulated, GPA of 2.0.
+- **System response:** "9 credits and accumulated 33 credits, with a GPA of 2.0."
+- **Retrieval quality:** **Relevant** — all top hits from `lehman_tap_program.txt`.
+- **Accuracy:** **Accurate.** Minor: omitted the "in the prior term" qualifier on the 9 credits.
+
+### Query 2 — Withdraw from all classes
+
+- **Question:** What happens to my financial aid if I withdraw from all my classes?
+- **Expected answer:** 60% completion rule applies; unearned aid is returned to federal programs in a specific order; future eligibility may be affected.
+- **System response:** Covers the 60% rule, the return order, student loans being forced into repayment, SAP impact, and future-semester aid loss.
+- **Retrieval quality:** **Relevant** — 4 of 5 top hits from `lehman_withdrawals_policy.txt`, top-hit cosine distance 0.170 (the lowest of any eval query).
+- **Accuracy:** **Accurate** — thorough and well-organized.
+
+### Query 3 — SAP appeal at Lehman
+
+- **Question:** How do I appeal a SAP suspension at Lehman?
+- **Expected answer:** Submit an electronic SAP appeal at `lehman.smapply.io/prog/undergraduate_appeals/` with documentation; if granted, the student is placed on probation for one semester.
+- **System response:** Submission URL + graduate routing + the four required components of the appeal package.
+- **Retrieval quality:** **Relevant** — all top hits from `lehman_sap_policy.txt`.
+- **Accuracy:** **Partially accurate.** Omitted the post-appeal probation outcome (see Failure Case Analysis below). The multi-turn follow-up *"What happens if my appeal is granted?"* surfaces the probation answer correctly.
+
+### Query 4 — Excelsior income limit
+
+- **Question:** What is the income limit to qualify for the Excelsior Scholarship?
+- **Expected answer:** Household federal AGI at or below $125,000.
+- **System response:** "Household federal adjusted gross income can total up to $125,000."
+- **Retrieval quality:** **Relevant** — top hit from `lehman_state_aid_faqs.txt` (the FAQ ranked above the dedicated Excelsior page; see Failure Case Analysis for the cross-source note).
+- **Accuracy:** **Accurate.**
+
+### Query 5 — CUNYfirst aid status check
+
+- **Question:** How do I check my financial aid status in CUNYfirst?
+- **Expected answer:** Log into `home.cunyfirst.cuny.edu` → Student Center → Financial Aid → select Aid Year → review Award Summary; also check the TO DO list.
+- **System response:** Full step path plus a discussion of the TO DO list.
+- **Retrieval quality:** **Relevant** — top 2 hits from `lehman_cunyfirst_facts_guide.txt` and `lehman_financial_aid_faqs.txt`.
+- **Accuracy:** **Accurate.**
+
+**Summary:** 4 of 5 accurate, 1 partially accurate. Retrieval quality was **Relevant** on all five — every top hit pulled from a topically correct source document. The single failure was a *completeness* gap (missing the post-appeal probation outcome), not a *correctness* gap; the Conversational Memory stretch feature resolves it through natural follow-up.
 
 ---
 
