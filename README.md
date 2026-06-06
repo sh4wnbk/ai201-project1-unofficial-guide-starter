@@ -31,6 +31,31 @@ All 12 documents were pre-scraped to plain text and stored in `data/raw/`. Total
 
 ---
 
+## Architecture
+
+```mermaid
+flowchart TD
+    subgraph BUILD["Build time (one-off, run by embed.py)"]
+        A[12 .txt files in data/raw/] -->|ingest.py| B[RecursiveCharacterTextSplitter<br/>500 chars / 100 overlap<br/>filter chunks under 100 chars]
+        B -->|98 chunks| C[all-MiniLM-L6-v2<br/>local sentence-transformer]
+        C -->|vectors + source metadata| D[(ChromaDB<br/>chroma_db/)]
+    end
+
+    subgraph QUERY["Query time (per request, app.py)"]
+        E[User question<br/>Gradio textbox] -->|embed query| F[all-MiniLM-L6-v2]
+        F -->|query vector| G{Cosine similarity<br/>top-5}
+        G -->|retrieved chunks| H[Grounded prompt<br/>system prompt + context + question]
+        H -->|google-genai SDK| I[Gemini 2.5 Flash]
+        I --> J[Answer text<br/>+ Sources panel<br/>filename · distance · preview]
+    end
+
+    D -.->|searched at query time| G
+```
+
+The build-time path runs once when you execute `embed.py`: it loads the corpus, chunks it, embeds every chunk, and persists the vectors to ChromaDB. The query-time path runs on every Gradio submission: the user's question is embedded with the same model, the top-5 most similar chunks are retrieved by cosine distance, and those chunks are injected into a grounded prompt sent to Gemini. The dashed line shows that the index built at build time is what's searched on every request.
+
+---
+
 ## Chunking Strategy
 
 **Splitter:** LangChain `RecursiveCharacterTextSplitter`
