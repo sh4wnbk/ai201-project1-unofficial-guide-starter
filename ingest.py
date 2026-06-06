@@ -23,9 +23,15 @@ def chunk_documents(docs: list[tuple[str, str]]) -> list[dict]:
     )
     chunks = []
     for source, text in docs:
-        for piece in splitter.split_text(text):
-            chunks.append({"text": piece, "source": source})
+        for i, piece in enumerate(splitter.split_text(text)):
+            chunks.append({"text": piece, "source": source, "chunk_index": i})
     return chunks
+
+
+def get_chunks(raw_dir: Path = RAW_DIR) -> list[dict]:
+    docs = load_documents(raw_dir)
+    chunks = chunk_documents(docs)
+    return [c for c in chunks if len(c["text"].strip()) >= 100]
 
 
 def main() -> None:
