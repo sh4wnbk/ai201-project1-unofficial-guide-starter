@@ -88,7 +88,8 @@ with gr.Blocks(title="Lehman Financial Aid Assistant") as demo:
     query_in = gr.Textbox(label="Your question", lines=2, placeholder="e.g. What is the income limit for the Excelsior Scholarship?")
     ask_btn = gr.Button("Ask", variant="primary")
     answer_out = gr.Textbox(label="Answer", lines=8, interactive=False)
-    sources_out = gr.Markdown()
+    gr.Markdown("### Sources")
+    sources_out = gr.Markdown(value="*Ask a question above to see retrieved sources here.*")
 
     ask_btn.click(answer, inputs=query_in, outputs=[answer_out, sources_out])
     query_in.submit(answer, inputs=query_in, outputs=[answer_out, sources_out])

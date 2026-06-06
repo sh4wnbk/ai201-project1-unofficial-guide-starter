@@ -1,162 +1,374 @@
-# The Unofficial Guide — Project 1
+# Lehman Financial Aid — Unofficial Guide (Project 1)
 
-> **How to use this template:**
-> Complete each section *after* you've built and tested the corresponding part of your system.
-> Do not write placeholder text — if a section isn't done yet, leave it blank and come back.
-> Every section below is required for submission. One-liners will not receive full credit.
+A retrieval-augmented Q&A system for Lehman College (CUNY) financial aid. Students can ask about FAFSA, TAP, SAP, Excelsior, withdrawals, and CUNYfirst, and receive answers grounded only in 12 scraped policy documents and forum threads — with source attribution shown alongside every answer.
 
 ---
 
 ## Domain
 
-<!-- What topic or category of knowledge does your system cover?
-     Why is this knowledge valuable, and why is it hard to find through official channels?
-     Example: "Student reviews of CS professors at [university] — useful because official
-     course descriptions don't reflect teaching style, exam difficulty, or workload." -->
+Financial aid navigation at Lehman College (CUNY) — the practical knowledge students need to apply for, maintain, and appeal federal and state aid (FAFSA, TAP, SAP, Excelsior). This knowledge is valuable because the official process is fragmented across multiple agencies (federal, NY State, CUNY, Lehman) and the real-world guidance students need — what actually causes delays, how appeals work in practice, what happens when you withdraw or get dropped — lives in forums and word-of-mouth, not on a single official page. Around 89% of Lehman students receive some form of financial aid, yet the processes governing it are among the most confusing in higher education.
 
 ---
 
 ## Document Sources
 
-<!-- List every source you collected documents from.
-     Be specific: include URLs, subreddit names, forum thread titles, or file names.
-     Aim for variety — sources that together cover different subtopics or perspectives. -->
-
 | # | Source | Type | URL or file path |
 |---|--------|------|-----------------|
-| 1 | | | |
-| 2 | | | |
-| 3 | | | |
-| 4 | | | |
-| 5 | | | |
-| 6 | | | |
-| 7 | | | |
-| 8 | | | |
-| 9 | | | |
-| 10 | | | |
+| 1 | Lehman Financial Aid FAQs | Official policy | https://www.lehman.edu/financial-aid/faqs/ |
+| 2 | Lehman TAP Program | Official policy | https://www.lehman.edu/financial-aid/state-aid-information/tap/ |
+| 3 | Lehman SAP Policy | Official policy | https://www.lehman.edu/financial-aid/sap/ |
+| 4 | Lehman Excelsior Scholarship | Official policy | https://www.lehman.edu/financial-aid/state-aid-information/excelsior-scholarship/ |
+| 5 | Lehman State Aid FAQs | Official policy | https://www.lehman.edu/financial-aid/state-aid-information/state-aid-faqs/ |
+| 6 | Lehman Withdrawals Policy | Official policy | https://www.lehman.edu/financial-aid/withdrawals/ |
+| 7 | Lehman Special Circumstances | Official policy | https://www.lehman.edu/financial-aid/special-circumstances/ |
+| 8 | Lehman CUNYfirst & FACTS Guide | Official guide | https://www.lehman.edu/financial-aid/state-aid-information/facts/ |
+| 9 | HESC Student Update Feb 2026 | NY State agency | https://hesc.ny.gov/about/news-releases/student-update-february-2026 |
+| 10 | HESC 2026-27 FAFSA/TAP Open | NY State agency | https://hesc.ny.gov/about/news-releases/2026-27-fafsa-and-tap-applications-open |
+| 11 | r/CUNY — "Dropped from class" | Reddit thread | reddit.com/r/cuny (manual copy) |
+| 12 | r/CUNY — "Academic integrity F" | Reddit thread | reddit.com/r/cuny (manual copy) |
+
+All 12 documents were pre-scraped to plain text and stored in `data/raw/`. Total corpus: ~60 KB.
 
 ---
 
 ## Chunking Strategy
 
-<!-- Describe your chunking approach with enough specificity that someone else could reproduce it.
-     Include:
-     - Chunk size (characters or tokens) and why that size fits your documents
-     - Overlap size and why (or why not) you used overlap
-     - Any preprocessing you did before chunking (e.g., stripping HTML, removing headers)
-     - What your final chunk count was across all documents -->
+**Splitter:** LangChain `RecursiveCharacterTextSplitter`
+**Chunk size:** 500 characters
+**Overlap:** 100 characters
+**Post-filter:** chunks with fewer than 100 non-whitespace characters are dropped (removes header-only fragments).
+**Final chunk count:** 98 (99 before the filter)
 
-**Chunk size:**
+**Why these choices fit the documents:**
 
-**Overlap:**
+The corpus has two distinct document types:
 
-**Why these choices fit your documents:**
+1. **Official policy pages** (Lehman FAQs, TAP eligibility charts, SAP tables, HESC guides) have natural structure: Q&A blocks, numbered steps, policy paragraphs. `RecursiveCharacterTextSplitter` respects these boundaries by trying paragraph breaks first, then sentences, only falling back to character splits as a last resort. 500 characters keeps full Q&A pairs together without merging unrelated policy sections.
 
-**Final chunk count:**
+2. **Reddit threads** are short self-contained comments (1–5 sentences each). 500 characters is large enough to keep a parent post plus the highest-voted reply together, which matters for threaded advice.
+
+**Why 100-character overlap:** Several documents have multi-part answers where the key fact appears at the end of one paragraph and the explanation at the start of the next — TAP eligibility tables are the clearest example. 100 characters of overlap ensures boundary facts appear in at least one complete chunk.
+
+**Why the `< 100` char filter was added (diverged from the original spec):** Each document begins with a metadata header (`SOURCE:`, `DOCUMENT:`, `SCRAPED:`, a divider line). The splitter cleanly broke these into tiny header-only chunks that contained no useful answer content but would still surface in retrieval. Filtering them out improved precision without losing information.
+
+---
+
+## Sample Chunks (5, each labeled with its source document)
+
+### 1. `lehman_cunyfirst_facts_guide.txt` (chunk 11/98)
+```
+HOW TO VIEW YOUR FINANCIAL AID AWARD IN CUNYFIRST:
+1. Log on to CUNYfirst at home.cunyfirst.cuny.edu
+2. Click on Student Center
+3. Click on Financial Aid
+4. Click the correct Aid Year (covers Summer, Fall, and Spring of that academic year)
+5. Review your Award Summary
+```
+
+### 2. `lehman_sap_policy.txt` (chunk 35/98)
+```
+DEADLINE: THE DEADLINE TO SUBMIT A SAP APPEAL FOR SPRING 2026 SEMESTER WAS TUESDAY 05/26/2026.
+
+HOW TO SUBMIT AN APPEAL:
+- Undergraduate students: submit electronic SAP appeal at lehman.smapply.io/prog/undergraduate_appeals/
+- Graduate students: submit typed written appeal via email to Takiyah.Ali@lehman.cuny.edu
+```
+
+### 3. `lehman_special_circumstances.txt` (chunk 45/98)
+```
+WHEN TO REQUEST A SPECIAL CIRCUMSTANCES REVIEW:
+- Significant change in family income (job loss, reduced hours, retirement, divorce/separation)
+- Death of a parent or spouse
+- Unusual medical or dental expenses not covered by insurance
+- Natural disaster affecting family finances
+- Loss of untaxed income or benefits
+- Student or parent became disabled
+- Unusually high dependent care expenses
+```
+
+### 4. `lehman_tap_program.txt` (chunk 64/98)
+```
+TAP ELIGIBILITY CHARTS:
+For students who received FIRST TAP award in SUMMER 2006 or later (Non-SEEK and SEEK):
+Payment 1: 0 credits completed, 0 accumulated, GPA 0
+Payment 2: 6 credits completed, 3 accumulated, GPA 1.1
+Payment 3: 6 credits completed, 9 accumulated, GPA 1.2
+Payment 4: 9 credits completed, 21 accumulated, GPA 1.3
+Payment 5: 9 credits completed, 33 accumulated, GPA 2.0
+Payment 6: 12 credits completed, 45 accumulated, GPA 2.0
+```
+
+### 5. `lehman_withdrawals_policy.txt` (chunk 72/98)
+```
+WHAT HAPPENS WHEN YOU WITHDRAW:
+When a student withdraws from all classes before completing 60% of the semester, federal regulations require the college to calculate how much federal aid was "earned." The unearned portion must be returned to the federal aid programs.
+```
 
 ---
 
 ## Embedding Model
 
-<!-- Name the embedding model you used and explain your choice.
-     Then answer: if you were deploying this system for real users and cost wasn't a constraint,
-     what tradeoffs would you weigh in choosing a different model?
-     Consider: context length limits, multilingual support, accuracy on domain-specific text,
-     latency, and local vs. API-hosted. -->
+**Model used:** `sentence-transformers/all-MiniLM-L6-v2` (local, no API)
+**Vector store:** ChromaDB (persistent, cosine distance)
+**Top-k:** 5
 
-**Model used:**
+Runs entirely offline after first model download. Fast enough for interactive use (< 1s per query). MiniLM is the standard "good enough at small cost" choice for English general-purpose retrieval.
 
-**Production tradeoff reflection:**
+### Production tradeoff reflection
+
+For a real deployment serving Lehman students, I would weigh:
+
+- **`text-embedding-3-large` (OpenAI):** Higher accuracy on domain-specific policy text and longer context, but per-query API cost and rate limits make it a poor fit for a free student tool.
+- **`multilingual-e5-large`:** Lehman has a large Spanish-speaking student population. Multilingual support would noticeably improve retrieval for Spanish-phrased queries, which MiniLM handles poorly. This is probably the single biggest accuracy upgrade for *this user base*, not raw benchmark scores.
+- **`bge-large-en-v1.5`:** Strong English retrieval benchmark scores, still runs locally — a drop-in upgrade if accuracy needs improvement without leaving the offline footprint.
+- **Latency:** MiniLM is fast enough for an interactive interface. Larger local models add 2–5s per query, which degrades the perceived responsiveness in the Gradio UI.
+
+The right choice depends on what failure mode hurts most: domain precision (→ larger English model), accessibility (→ multilingual), or cost (→ stay on MiniLM).
+
+---
+
+## Retrieval Test Results
+
+Three queries from the evaluation set, with the top-5 retrieved chunks for each. Distance is cosine distance — lower is closer.
+
+### Query A: "What happens to my financial aid if I withdraw from all my classes?"
+| Rank | Source | Distance |
+|---|---|---|
+| 1 | `lehman_withdrawals_policy.txt` (UNOFFICIAL WITHDRAWALS) | 0.170 |
+| 2 | `lehman_financial_aid_faqs.txt` (DROPPING OR WITHDRAWING warning) | 0.191 |
+| 3 | `lehman_withdrawals_policy.txt` (WHAT HAPPENS WHEN YOU WITHDRAW / 60% rule) | 0.205 |
+| 4 | `lehman_withdrawals_policy.txt` (ORDER OF RETURN) | 0.364 |
+| 5 | `lehman_withdrawals_policy.txt` (document header) | 0.379 |
+
+**Why these chunks are relevant:** Four of the top five hits come from the dedicated withdrawals policy doc, and the fifth is the warning paragraph from the general FAQ. The top hit at distance 0.170 is the lowest score across the whole eval set — the question and the document share vocabulary ("withdraw," "classes," "federal aid"), so the embedding model aligns them cleanly. The retrieved set covers the three sub-topics needed for a complete answer (60% rule, return order, future-aid consequences), all within one document, which means the LLM can synthesize without conflicting sources.
+
+### Query B: "What is the income limit to qualify for the Excelsior Scholarship?"
+| Rank | Source | Distance |
+|---|---|---|
+| 1 | `lehman_state_aid_faqs.txt` (Excelsior FAQ block) | 0.261 |
+| 2 | `lehman_excelsior_scholarship.txt` (doc header) | 0.426 |
+| 3 | `hesc_student_update_feb2026.txt` (Spring 2026 Excelsior reminder) | 0.460 |
+| 4 | `lehman_excelsior_scholarship.txt` (IMPORTANT NOTE — application closed) | 0.515 |
+| 5 | `lehman_excelsior_scholarship.txt` (IMPORTANT CREDIT NOTE) | 0.519 |
+
+**Why these chunks are relevant:** All five hits are Excelsior-related across three different sources. Interestingly, the top hit is the **state aid FAQs**, not the dedicated Excelsior page — the FAQ phrases the $125,000 income limit as a direct Q&A, which embeds closer to the query than the Excelsior page's narrative prose. The dedicated Excelsior page is still in the top 5, so the LLM has both phrasings. The answer is correct either way — but it's a useful data point showing that documents written as Q&A pairs tend to dominate retrieval for question-shaped queries.
+
+### Query C: "How do I check my financial aid status in CUNYfirst?"
+| Rank | Source | Distance |
+|---|---|---|
+| 1 | `lehman_cunyfirst_facts_guide.txt` (HOW TO VIEW step-by-step) | 0.298 |
+| 2 | `lehman_financial_aid_faqs.txt` (HOW TO VIEW in CUNYfirst) | 0.299 |
+| 3 | `lehman_cunyfirst_facts_guide.txt` (TO DO LIST) | 0.331 |
+| 4 | `lehman_cunyfirst_facts_guide.txt` (CUNYfirst overview) | 0.368 |
+| 5 | `lehman_financial_aid_faqs.txt` (CHECK CUNYFIRST alerts) | 0.374 |
+
+(Explanation not required for this third query — included to show retrieval consistency.)
 
 ---
 
 ## Grounded Generation
 
-<!-- Explain how your system enforces grounding — how does it prevent the LLM from answering
-     beyond the retrieved documents?
-     Describe both your system prompt (what instruction you gave the model) and any structural
-     choices (e.g., how you formatted the context, whether you filtered low-relevance chunks).
-     Do not just say "I told it to use the documents" — show the actual instruction or explain
-     the mechanism. -->
+Grounding is enforced by the **system prompt** attached to the Gemini model on every call. The system prompt explicitly forbids the model from using any knowledge outside the retrieved context, and mandates a specific refusal phrase for out-of-scope questions. The retrieved chunks are then injected into the user message as labeled `[Source N: filename]` blocks above the question.
 
-**System prompt grounding instruction:**
+**Verbatim system prompt** (`app.py`):
 
-**How source attribution is surfaced in the response:**
+```
+You are a financial-aid assistant for Lehman College (CUNY) students.
+
+Answer using ONLY the information in the Context block below. The context is
+labeled [Source N: filename] for each chunk. Do not use any prior knowledge,
+general knowledge, training data, or plausible-sounding inference. Do not
+fabricate dates, amounts, deadlines, URLs, eligibility rules, or procedures
+that are not explicitly stated in the context.
+
+If the context does not contain enough information to answer the question,
+respond with EXACTLY this sentence and nothing else:
+"I don't have enough information on that".
+
+When the context is sufficient, write a direct, plain-prose answer. Do not
+include inline citations or "[Source N]" markers — the UI shows sources in a
+separate panel.
+```
+
+**How source attribution is surfaced:** The Gradio UI renders sources in a dedicated **Sources** panel below the answer textbox. Each retrieved chunk is shown as `filename` + cosine distance + a ~200-char preview, in retrieval rank order. Inline citations were deliberately kept *out* of the answer text so the prose reads naturally — the user verifies grounding by inspecting the side panel.
+
+---
+
+## Example Responses
+
+### Example 1 — Excelsior income limit (grounded answer with sources)
+
+**Query:** *What is the income limit to qualify for the Excelsior Scholarship?*
+
+**Answer:** Household federal adjusted gross income can total up to $125,000 to be eligible for the Excelsior Scholarship.
+
+**Sources (top 5):**
+1. `lehman_state_aid_faqs.txt` (dist 0.261)
+2. `lehman_excelsior_scholarship.txt` (dist 0.426)
+3. `hesc_student_update_feb2026.txt` (dist 0.460)
+4. `lehman_excelsior_scholarship.txt` (dist 0.515)
+5. `lehman_excelsior_scholarship.txt` (dist 0.519)
+
+### Example 2 — TAP 5th payment requirements (grounded answer with sources)
+
+**Query:** *How many credits do I need to complete for my 5th TAP payment?*
+
+**Answer:** For your 5th TAP payment, you need to complete 9 credits and have accumulated 33 credits, with a GPA of 2.0.
+
+**Sources (top 5):**
+1. `lehman_tap_program.txt` (dist 0.329) — TAP ELIGIBILITY CHARTS
+2. `lehman_tap_program.txt` (dist 0.340) — PART-TIME TAP
+3. `lehman_tap_program.txt` (dist 0.357) — SUMMER TAP AWARDS
+4. `lehman_tap_program.txt` (dist 0.361) — TAP INELIGIBILITY
+5. `lehman_tap_program.txt` (dist 0.391) — TAP QUALIFICATIONS
+
+### Example 3 — Out-of-scope refusal
+
+**Query:** *How do I apply for a parking permit at Lehman?*
+
+**Answer:** I don't have enough information on that.
+
+Parking is not covered in any of the indexed documents, so the system prompt's refusal clause triggers. Without RAG, Gemini would happily generate a plausible-sounding parking procedure. With grounding, it cleanly refuses.
+
+---
+
+## Query Interface
+
+Built with Gradio (`gradio==6.16.0`). The UI has three visible regions:
+
+| Field | Type | Purpose |
+|---|---|---|
+| **Your question** | Textbox (2 lines, editable) | Free-text input. Submits on Enter or via the **Ask** button. |
+| **Answer** | Textbox (8 lines, read-only) | Gemini's response text. Plain prose, no inline citations. |
+| **Sources** | Static "### Sources" heading + Markdown panel | Numbered list of the 5 retrieved chunks: source filename, cosine distance, and a 200-char preview. Visible from page load with a placeholder before the first query. |
+
+### Sample interaction transcript
+
+```
+[USER types]
+How do I appeal a SAP suspension at Lehman?
+
+[USER clicks Ask]
+
+[ANSWER panel renders]
+To appeal a SAP suspension at Lehman College, undergraduate
+students should submit an electronic SAP appeal at
+lehman.smapply.io/prog/undergraduate_appeals/. Graduate students
+should submit a typed written appeal via email to
+Takiyah.Ali@lehman.cuny.edu.
+
+The SAP appeal must include:
+*   A detailed explanation of mitigating circumstances (such as
+    personal illness/injury, family illness/death, loss of
+    employment, or academic program changes).
+*   Supporting documentation (such as medical records, a death
+    certificate, or court/legal records).
+*   A discussion of changes in circumstances and personal
+    adjustments that will help maintain SAP in the future.
+*   An academic plan for achieving and maintaining future SAP
+    requirements.
+
+A SAP review can be requested after any term in which aid was
+suspended.
+
+[SOURCES panel renders]
+**Sources (top 5)**
+
+1. `lehman_sap_policy.txt` (dist 0.386)
+   > RE-ESTABLISHING ELIGIBILITY: - A SAP review can be requested...
+2. `lehman_sap_policy.txt` (dist 0.409)
+   > DEADLINE: THE DEADLINE TO SUBMIT A SAP APPEAL FOR SPRING 2026...
+3. `lehman_sap_policy.txt` (dist 0.423)
+   > SOURCE: https://www.lehman.edu/financial-aid/sap/ ...
+4. `lehman_sap_policy.txt` (dist 0.447)
+   > THE SAP APPEAL MUST INCLUDE: - Detailed explanation of...
+5. `lehman_sap_policy.txt` (dist 0.464)
+   > FINANCIAL AID SUSPENSION: Failure to satisfy any SAP criteria...
+```
 
 ---
 
 ## Evaluation Report
 
-<!-- Run your 5 test questions from planning.md through your system and record the results.
-     Be honest — a partially accurate or inaccurate result that you explain well is more
-     valuable than a suspiciously perfect result. -->
+All 5 test questions from `planning.md` run through the live system.
 
 | # | Question | Expected answer | System response (summarized) | Retrieval quality | Response accuracy |
-|---|----------|-----------------|------------------------------|-------------------|-------------------|
-| 1 | | | | | |
-| 2 | | | | | |
-| 3 | | | | | |
-| 4 | | | | | |
-| 5 | | | | | |
+|---|---|---|---|---|---|
+| 1 | How many credits do I need for my 5th TAP payment? | 9 credits completed in the prior term, 33 credits accumulated, GPA of 2.0 | "9 credits and accumulated 33 credits, with a GPA of 2.0" | Relevant (all 5 hits from `lehman_tap_program.txt`) | **Accurate** — minor: omitted the "prior term" qualifier on the 9 credits |
+| 2 | What happens to my financial aid if I withdraw from all my classes? | 60% completion rule, unearned aid returned to federal programs in specific order, future eligibility may be affected | Covers 60% rule, return order, loans being forced into repayment, SAP impact, and future-semester aid loss | Relevant (4/5 from `lehman_withdrawals_policy.txt`, dist 0.170) | **Accurate** — thorough and well-organized |
+| 3 | How do I appeal a SAP suspension at Lehman? | Submit electronic SAP appeal at lehman.smapply.io/prog/undergraduate_appeals/ with documentation; if granted, placed on probation for one semester | Submission URL + grad routing + 4 required appeal components | Relevant (all 5 from `lehman_sap_policy.txt`) | **Partially accurate** — omitted the post-appeal probation outcome |
+| 4 | What is the income limit to qualify for the Excelsior Scholarship? | Household federal AGI at or below $125,000 | "Household federal adjusted gross income can total up to $125,000" | Relevant (top hit from state-aid FAQs, not dedicated Excelsior page — see Failure Case note) | **Accurate** |
+| 5 | How do I check my financial aid status in CUNYfirst? | Log into home.cunyfirst.cuny.edu → Student Center → Financial Aid → Aid Year → Award Summary; also check TO DO list | Full step path + TO DO list discussion | Relevant (top 2 from CUNYfirst guide and FAQ) | **Accurate** |
 
-**Retrieval quality:** Relevant / Partially relevant / Off-target  
-**Response accuracy:** Accurate / Partially accurate / Inaccurate
+**Summary:** 4 of 5 accurate, 1 partially accurate. Retrieval quality was **Relevant** on all 5 — every top hit pulled from a topically correct source document. The single failure was a *completeness* gap, not a *correctness* gap.
 
 ---
 
 ## Failure Case Analysis
 
-<!-- Identify at least one question where retrieval or generation did not work as expected.
-     Write a specific explanation of *why* it failed, tied to a part of the pipeline.
+**Question that failed:** *How do I appeal a SAP suspension at Lehman?*
 
-     "The answer was wrong" is not an explanation.
+**What the system returned:** A correct description of the submission URL (`lehman.smapply.io/prog/undergraduate_appeals/`), graduate-vs-undergraduate routing, and the four required components of an appeal package (mitigating circumstances, supporting documentation, change in circumstances, academic plan). What it **omitted**: the outcome of a successful appeal — that the student is placed on probation for one semester. A student asking "how do I appeal" almost certainly wants to know "and what happens next?"
 
-     "The relevant information was split across a chunk boundary, so retrieval returned
-     only half the context — the model didn't have enough to answer correctly" is an explanation.
+**Root cause (retrieval stage):** Inspecting the top-5 retrieved chunks for this query, all five came from `lehman_sap_policy.txt` and covered: how to submit (chunk 1), what to include (chunk 4), re-establishing eligibility (chunk 9), the document header (chunk 0), and suspension consequences (chunk 6). The "probation after a granted appeal" content lives in a different chunk of the same document — but it ranked sixth or lower because the query embedding for "how do I appeal" lexically clusters around *submission* and *documentation* vocabulary, not *outcome* vocabulary like "probation" or "warning period." With `top_k=5`, the probation chunk was just outside the retrieved window.
 
-     "The embedding model treated the professor's nickname as out-of-vocabulary and returned
-     results from an unrelated review" is an explanation. -->
+**What I would change to fix it:**
 
-**Question that failed:**
+1. **Cheap fix:** bump `TOP_K` from 5 to 7 or 8 — likely pulls the probation chunk into context without diluting precision (every current top hit is from the same document anyway, so there's headroom).
+2. **Better fix:** add query expansion for procedural questions — "how do I X" should also retrieve "what happens after X."
+3. **Best fix for this corpus:** chunk the SAP appeal content as one unit (submission + requirements + outcome) rather than letting `RecursiveCharacterTextSplitter` divide it across boundaries. Docling's `HybridChunker` targets exactly this and is on my stretch list.
 
-**What the system returned:**
-
-**Root cause (tied to a specific pipeline stage):**
-
-**What you would change to fix it:**
+A second behavioral note from the eval (not a failure, but worth documenting): for the Excelsior income query, the dedicated `lehman_excelsior_scholarship.txt` ranked *below* `lehman_state_aid_faqs.txt`. Both contain the $125k figure, so the answer is still correct, but documents written in explicit Q&A form tend to win retrieval for question-shaped queries over documents written as narrative policy prose.
 
 ---
 
 ## Spec Reflection
 
-<!-- Reflect on how planning.md shaped your implementation.
-     Answer both questions with at least 2–3 sentences each. -->
+**One way the spec helped during implementation:**
 
-**One way the spec helped you during implementation:**
+The `planning.md` document forced every architectural decision upfront before any code was written — chunk size, overlap, embedding model, top-k, the exact 12 documents, even the 5 evaluation queries with expected answers. That meant each milestone's code task was a near-mechanical translation of a spec section, and I could verify correctness immediately at every stage instead of guessing what "good" looked like. The 5 evaluation queries especially: I ran them at the end of Milestone 4 (retrieval) and again at the end of Milestone 5 (generation), so any regression would have shown up at the milestone boundary, not at submission time.
 
-**One way your implementation diverged from the spec, and why:**
+**One way the implementation diverged from the spec, and why:**
+
+The spec called for `Groq llama-3.3-70b-versatile` in the architecture diagram, but the final implementation uses **Gemini 2.5 Flash via the `google-genai` SDK**. The first divergence was a personal preference for the Gemini API. The second divergence (2.0 → 2.5 Flash) was forced: Gemini's free tier returned `limit: 0` for `gemini-2.0-flash` on my project, so I tested `gemini-2.5-flash` and it worked. A smaller but parallel divergence: I added a `<100 character` filter to drop header-only chunks after chunking — not in the original spec, but the un-filtered chunks polluted retrieval with metadata-only fragments. Both divergences kept the contract the spec was actually trying to enforce (grounded answers + source attribution); only the choice of provider and a chunk hygiene step changed.
 
 ---
 
 ## AI Usage
 
-<!-- Describe at least 2 specific instances where you used an AI tool during this project.
-     For each: what did you give the AI as input, what did it produce, and what did you
-     change, override, or direct differently?
+**Instance 1 — Ingestion script (Milestone 3)**
 
-     "I used Claude to help me code" is not sufficient.
-     "I gave Claude my Chunking Strategy section from planning.md and asked it to implement
-     chunk_text(). It returned a function using a fixed character split. I overrode the
-     chunk size from 500 to 200 because my documents are short reviews, not long guides." -->
+- *What I gave the AI:* The completed `planning.md` Documents table and Chunking Strategy section, plus an explicit spec: load all `.txt` files from `data/raw/`, attach source filename as metadata to each chunk, use LangChain `RecursiveCharacterTextSplitter` with `chunk_size=500` and `chunk_overlap=100`, print total chunk count plus 5 sample chunks with their source filenames. I included the directive "Do not add features not described there."
+- *What it produced:* A clean `ingest.py` with `load_documents`, `chunk_documents`, and a `main()` that printed sequential samples 1–5. It also missed that `langchain-text-splitters` wasn't in `requirements.txt` until I told it to add it, and missed that the venv's `pip` was broken (system Python was in `PATH` instead of the venv).
+- *What I changed or overrode:* (1) Overrode "5 sequential samples" with "5 random samples from 5 different source documents" — sequential samples all came from the same file and were useless for inspecting chunking quality across the corpus. (2) Added the `<100 character` chunk filter — the AI's chunks included tiny header-only fragments from the document metadata blocks, which I caught when reading the printed samples. (3) After it tried to write `ingest.py` without pinning the new dependency, I gave it a durable rule — "dependency issues that aren't pinned will bite whoever tries to run the project later" — and it pinned every transitive dependency it touched for the rest of the project.
 
-**Instance 1**
+**Instance 2 — LLM provider swap (Milestone 5)**
 
-- *What I gave the AI:*
-- *What it produced:*
-- *What I changed or overrode:*
+- *What I gave the AI:* "Replace Groq with Google Gemini API using `gemini-2.0-flash`. Use the google-generativeai Python SDK. Add GEMINI_API_KEY to .env and requirements.txt. Keep everything else the same — same grounding prompt, same source attribution, same Gradio UI."
+- *What it produced:* A correct swap to the legacy `google-generativeai` SDK, but it flagged in the plan that this SDK is officially deprecated by Google in favor of the newer `google-genai`. After install, the runtime printed the same deprecation warning.
+- *What I changed or overrode:* (1) Directed it to swap a second time, from the legacy `google-generativeai` to the current `google-genai` package — which has a different API surface (`genai.Client(...)`, `client.models.generate_content(...)`, config via `types.GenerateContentConfig`). (2) The first end-to-end run hit `429 limit: 0` on the free tier for `gemini-2.0-flash`, so I had it switch the model constant to `gemini-2.5-flash` — and that's the model in the final code. (3) Caught that the Gradio Sources panel rendered invisibly when empty (`gr.Markdown()` with no value) — had it add a static `### Sources` heading and a placeholder value so the panel is visible from page load, before recording the demo video.
 
-**Instance 2**
+---
 
-- *What I gave the AI:*
-- *What it produced:*
-- *What I changed or overrode:*
+## Setup & Run
+
+```bash
+# 1. Create venv and install
+python -m venv ai201_env
+source ai201_env/bin/activate
+pip install -r requirements.txt
+
+# 2. Configure Gemini key
+cp .env.example .env
+# edit .env and replace `your_key_here` with your key from https://aistudio.google.com/apikey
+
+# 3. Ingest + chunk (writes data/chunks.txt for inspection)
+python ingest.py
+
+# 4. Build the Chroma vector index (downloads MiniLM ~80MB on first run)
+python embed.py
+
+# 5. Launch the UI
+python app.py
+# → http://127.0.0.1:7860
+```
