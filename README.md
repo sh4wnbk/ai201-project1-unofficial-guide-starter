@@ -222,13 +222,15 @@ separate panel.
 4. `lehman_tap_program.txt` (dist 0.361) — TAP INELIGIBILITY
 5. `lehman_tap_program.txt` (dist 0.391) — TAP QUALIFICATIONS
 
-### Example 3 — Out-of-scope refusal
+---
+
+## Refusal / Out-of-Scope Example
 
 **Query:** *How do I apply for a parking permit at Lehman?*
 
 **Answer:** I don't have enough information on that.
 
-Parking is not covered in any of the indexed documents, so the system prompt's refusal clause triggers. Without RAG, Gemini would happily generate a plausible-sounding parking procedure. With grounding, it cleanly refuses.
+Parking is not covered in any of the indexed documents, so the system prompt's refusal clause triggers and the model emits the exact refusal phrase. Without RAG, Gemini would happily generate a plausible-sounding parking procedure from general knowledge. With grounding enforced via the system prompt, it cleanly refuses instead of hallucinating.
 
 ---
 
