@@ -1,0 +1,62 @@
+SOURCE: https://www.reddit.com/r/cuny/
+DOCUMENT: reddit_cuny_academic_integrity_grade_dispute
+SCRAPED: 2026-06-02
+============================================================
+
+TITLE: Professor gave me and another student an F for alleged academic integrity issue — what should I do?
+POSTED BY: Loose_Pin_8821 (1 day ago)
+
+POST:
+I'm taking an online accounting course, and the final exam required submitting an Excel file through an online platform. During finals week, I had a documented medical issue. I went to urgent care, was prescribed medication, and received a doctor's note excusing me from school through the exam period. Because of my condition, another student helped me with the submission/access process.
+
+After the final, the professor emailed both of us saying he found both of our names connected to the final exam file and concluded it was a violation of the university's academic integrity policy. He gave us both a zero on the final, meaning an F for the course.
+
+What confuses me is that the feedback is inconsistent — my feedback says I "apparently loaned" my work to the other student, while the other student's feedback says they "apparently loaned" their work to me. This suggests the conclusion is based on assumption rather than clear evidence.
+
+My questions:
+- Can a professor give an F for the whole course before a formal academic integrity review?
+- Am I entitled to know what specific evidence was used?
+- Should I focus on medical documentation, the unclear feedback, or the lack of explained evidence when contacting the Department Chair?
+- Is this a grade appeal, academic integrity case, or both?
+
+Student Affairs told me this should go through the Department Chair first, then the Dean/grade appeal process if unresolved.
+
+COMMENTS:
+
+[Slim_rubi] 16 points:
+The professor can give you an F in the course, however you should submit for review to the department. The other student should also submit a request for review. Instead of getting help from the student you would have had to speak to the professor for an extension.
+
+[Zealousideal-Dare345 - Queens College] 8 points:
+I don't think you can help them out at this point. There was no paper trail between you, your peer, and the professor prior to the violation. There was no agreement between the three of you about how your final exam was going to be administered. Besides, their name was also on your document. You should have talked to your professor about this prior to the final exam. You are both guilty of the academic integrity violation. It doesn't matter who played a bigger role — both of you were involved.
+
+[Previous-Height4237] 3 points:
+More than likely, they opened the Excel document on their computer — this changed the "Last Author" displayed by Excel to their Microsoft account name. This is what the professor is getting neurotic over. Did you download the submission on Brightspace to see if the file was your original?
+
+[TheDukeDeadass] 1 point:
+What I would do first is go over your school's specific policies on academic integrity violations and its procedures.
+To answer your questions:
+1. Generally no — they usually go through a process where you can contest the report, especially if this is your first offense.
+2. That is generally up to the school's discretion and policies.
+3. All of the above — make your case airtight if you're being 100% truthful.
+4. Likely both — reports/cases don't go without an appeal first.
+5. Definitely follow up with the professor, advisor, and dean.
+
+[Just-The-Facts-411] 1 point:
+Microsoft Excel has a history function that shows who edited what and when. If it was simply your peer who did a "save as," that would be obvious. If so, you can prove that with the history function and use it in your appeal.
+
+[DonnieEresUnPendejo] 1 point:
+Go to the File tab → Info in the left Nav Bar. It will show the author (presumably OP) and last modified by (presumably the friend if they saved it). That can be explained by someone else submitting the final product. Go to Review → Show Changes. That will show who made each edit. If both names show up making edits, it is pretty much game over.
+
+[KizashiKaze] 5 points:
+I definitely would suggest focusing on all three points in your original post when reaching out to the Dept Chair. They may ask why you didn't reach out through your personal email, but they don't know the extent of your condition at that time.
+
+[investment27] 1 point:
+Focus on medical.
+
+[Loose_Pin_8821 - OP] summary responses:
+- Completed the work myself; peer only assisted with submission
+- The submission window was Friday 7:00-9:00pm and was heavily medicated at that time
+- The peer's name appears because downloading and saving the file registers their Microsoft account as "last modified by"
+- Professor said he's "keeping the specific evidence to himself"
+- Student Affairs directed to Department Chair first, then Dean/grade appeal if unresolved
+- CUNY Academic Integrity Policy says F for the course; professor informed the Department Chair

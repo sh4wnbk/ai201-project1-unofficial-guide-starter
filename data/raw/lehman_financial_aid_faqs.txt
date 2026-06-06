@@ -1,0 +1,66 @@
+SOURCE: https://www.lehman.edu/financial-aid/faqs/
+DOCUMENT: Lehman College Financial Aid FAQs
+SCRAPED: 2026-06-02
+============================================================
+
+FREQUENTLY ASKED QUESTIONS — LEHMAN COLLEGE FINANCIAL AID
+
+WHAT DO I NEED TO DO TO GET FINANCIAL AID?
+The application process for almost all federal, state, local and college financial aid programs begins with filing a FAFSA (Free Application for Federal Student Aid). Through the FAFSA you will receive consideration for Pell Grant, campus-based aid and begin the TAP application process.
+
+HOW DO I APPLY?
+- File online at studentaid.gov using your FSA ID. If you are a dependent student, one of your parents will also need an FSA ID.
+- Enter Lehman College's Federal Title IV code: 007022
+- If you previously attended a different college, make sure to include Lehman's school code 007022 on your FAFSA.
+
+DEADLINES
+The FAFSA becomes available on October 1st each year. It uses income data from the "prior-prior" year (e.g., FAFSA for 2024-2025 uses 2022 income data). File as early as possible before registration. College Work-Study is first-come, first-served — funding is limited.
+
+WHAT HAPPENS NEXT?
+After submitting your FAFSA, you will receive a Student Aid Report (SAR). Look for your Expected Family Contribution (EFC) or Student Aid Index (SAI) — beginning with the 2024-2025 FAFSA, EFC was replaced by SAI.
+
+MAKE CORRECTIONS: Log in and click "Make FAFSA Corrections." Corrections process in 3-5 business days. Do not make changes if you've already submitted documentation to the Financial Aid Office — they will make changes for you.
+
+CHECK CUNYFIRST: Pay close attention to your TO DO list in CUNYfirst. Alerts will indicate what documentation must be submitted. Common SAR flags:
+- "Your school will ask you to provide certain financial documents..."
+- "The name you reported on your application doesn't match..."
+- "The Department of Homeland Security did not confirm..."
+- "The Social Security Administration (SSA) did not confirm..."
+- "Your parent's total income appears to be unusually low."
+
+HOW TO VIEW FINANCIAL AID IN CUNYFIRST:
+1. Log on to CUNYfirst and click on the Student Center
+2. Click on Financial Aid
+3. Click the correct Aid Year
+4. Review your Award Summary
+
+APPLYING FOR TAP:
+If you are a New York State resident, you may be eligible for TAP. After completing FAFSA, look for the "New York Residents" section link at the bottom — it takes you to the HESC website to complete a TAP application. 
+Lehman College TAP CODE: 1412 (different from FAFSA code)
+
+NEED ANALYSIS FORMULA:
+Cost of Attendance - EFC - Federal Pell Grant Eligibility - Aid from Other Sources = Financial Need
+
+ELIGIBILITY CRITERIA (must meet all):
+- High school diploma or GED
+- Working toward a degree or certificate (matriculated student)
+- Enrolled in an eligible program
+- U.S. citizen or eligible non-citizen
+- Valid Social Security Number
+- Register with Selective Service if required
+- Maintain Satisfactory Academic Progress and Enrollment Status
+
+WARNING — DROPPING OR WITHDRAWING FROM CLASSES:
+Students who drop or withdraw from classes may lose part or all of that semester's financial aid. Consequences can include:
+- Increased out-of-pocket payments toward tuition
+- Having to repay received funds to the U.S. Department of Education
+- Loss of part or all of the following semester's financial aid
+- A student loan being forced into repayment
+ALWAYS consult a financial aid counselor before changing enrollment status.
+
+APPLICATION RESPONSES:
+- TAP Award Certificate: notifies you of TAP eligibility. Keep it — do not submit to Financial Aid Office. Your TAP award is sent directly to Lehman's computer file.
+- CUNY Financial Aid Award Letter: emailed to your college email. Shows TAP, Pell, Work-Study, and other aid amounts.
+
+CONTACT: Financial Aid Office, 718-960-8545, Shuster Hall Room 136
+Hours: Mon-Thu 9am-5pm (Tue until 6pm), Fri 9am-3pm
