@@ -9,7 +9,7 @@ from embed import retrieve
 
 load_dotenv()
 
-MODEL = "gemini-2.5-flash"
+MODEL = "gemini-2.5-flash-lite"
 TOP_K = 7
 TEMPERATURE = 0.2
 PREVIEW_CHARS = 200
@@ -97,6 +97,11 @@ def answer(query: str, history: list[dict] | None = None) -> tuple[str, str]:
             temperature=TEMPERATURE,
         ),
     )
+    if not response.candidates or not response.candidates[0].content or not response.candidates[0].content.parts:
+        finish_reason = (
+            response.candidates[0].finish_reason if response.candidates else "no candidates"
+        )
+        return f"(Model returned no content. Finish reason: {finish_reason})", format_sources(chunks)
     return response.text.strip(), format_sources(chunks)
 
 
@@ -106,7 +111,17 @@ SOURCES_PLACEHOLDER = "*Ask a question above to see retrieved sources here.*"
 def respond(message: str, history: list[dict]) -> tuple[str, list[dict], str]:
     if not message.strip():
         return "", history, SOURCES_PLACEHOLDER
-    answer_text, sources_md = answer(message, history)
+    try:
+        answer_text, sources_md = answer(message, history)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        err_text = f"**Error from backend** (`{type(e).__name__}`): {e}"
+        new_history = history + [
+            {"role": "user", "content": message},
+            {"role": "assistant", "content": err_text},
+        ]
+        return "", new_history, SOURCES_PLACEHOLDER
     new_history = history + [
         {"role": "user", "content": message},
         {"role": "assistant", "content": answer_text},

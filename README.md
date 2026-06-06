@@ -46,7 +46,7 @@ flowchart TD
         F -->|embed| G[all-MiniLM-L6-v2]
         G -->|query vector| H{Cosine similarity<br/>top-7}
         H -->|retrieved chunks| I[Grounded prompt<br/>system + chat history + context + question]
-        I -->|google-genai SDK| J[Gemini 2.5 Flash]
+        I -->|google-genai SDK| J[Gemini 2.5 Flash Lite]
         J --> K[Answer text<br/>+ Sources panel<br/>filename · distance · preview]
     end
 
@@ -162,7 +162,7 @@ ChromaDB is ideal for development and a small persistent corpus, but a real depl
 
 **Generation service alternatives:**
 
-Currently the system calls Gemini 2.5 Flash directly via the `google-genai` SDK. Two production-grade alternatives:
+Currently the system calls Gemini 2.5 Flash Lite directly via the `google-genai` SDK. Two production-grade alternatives:
 
 - **Amazon Bedrock:** Managed access to multiple foundation models (Claude, Llama, Titan, etc.) through a single API. Worth it when A/B-testing models, consolidating billing across model providers, or pairing generation with OpenSearch/S3 Vectors above for a fully AWS-native pipeline.
 - **Direct Anthropic / OpenAI APIs:** Lowest abstraction — pick one model and own the integration. Cheapest path when the model choice is settled and you don't need cross-provider routing.
@@ -401,7 +401,7 @@ All 5 test questions from `planning.md` run through the live system.
 
 **What I shipped:**
 
-1. **Bumped `TOP_K` from 5 to 7** in both `embed.py` and `app.py`. The probation chunk now retrieves at rank 6 of 7 — exactly inside the window. No other rankings change; Gemini 2.5 Flash's context window has plenty of room for two extra chunks.
+1. **Bumped `TOP_K` from 5 to 7** in both `embed.py` and `app.py`. The probation chunk now retrieves at rank 6 of 7 — exactly inside the window. No other rankings change; Gemini 2.5 Flash Lite's context window has plenty of room for two extra chunks.
 2. **Tightened the ingest-time chunk filter.** The original `<100 raw char` filter let through chunks that were mostly metadata but >100 chars total. The updated filter (`ingest.py:_substantive_len()`) strips `SOURCE:` / `DOCUMENT:` / `SCRAPED:` lines and ASCII divider rows *before* the 100-char check. Drops 3 additional header-only chunks at index time (corpus went 98 → 95).
 
 **Confirming the fix.** Re-ran all 5 eval queries after the change:
@@ -477,7 +477,7 @@ The `planning.md` document forced every architectural decision upfront before an
 
 **One way the implementation diverged from the spec, and why:**
 
-The spec called for `Groq llama-3.3-70b-versatile` in the architecture diagram, but the final implementation uses **Gemini 2.5 Flash via the `google-genai` SDK**. The first divergence was forced: Groq signup kept erroring out with a `trace_id` failure I couldn't get past, so I switched providers. The second divergence (2.0 → 2.5 Flash) was forced: Gemini's free tier returned `limit: 0` for `gemini-2.0-flash` on my project, so I tested `gemini-2.5-flash` and it worked. A smaller but parallel divergence: I added a `<100 character` filter to drop header-only chunks after chunking — not in the original spec, but the un-filtered chunks polluted retrieval with metadata-only fragments. Both divergences kept the contract the spec was actually trying to enforce (grounded answers + source attribution); only the choice of provider and a chunk hygiene step changed.
+The spec called for `Groq llama-3.3-70b-versatile` in the architecture diagram, but the final implementation uses **Gemini 2.5 Flash Lite via the `google-genai` SDK**. The first divergence was forced: Groq signup kept erroring out with a `trace_id` failure I couldn't get past, so I switched providers. The second divergence (2.0 → 2.5 Flash) was forced: Gemini's free tier returned `limit: 0` for `gemini-2.0-flash` on my project, so I tested `gemini-2.5-flash` and it worked. A smaller but parallel divergence: I added a `<100 character` filter to drop header-only chunks after chunking — not in the original spec, but the un-filtered chunks polluted retrieval with metadata-only fragments. Both divergences kept the contract the spec was actually trying to enforce (grounded answers + source attribution); only the choice of provider and a chunk hygiene step changed.
 
 ---
 
@@ -493,7 +493,7 @@ The spec called for `Groq llama-3.3-70b-versatile` in the architecture diagram, 
 
 - *What I gave the AI:* "Replace Groq with Google Gemini API using `gemini-2.0-flash`. Use the google-generativeai Python SDK. Add GEMINI_API_KEY to .env and requirements.txt. Keep everything else the same — same grounding prompt, same source attribution, same Gradio UI." *Context:* the swap was forced — Groq signup kept failing with a `trace_id` error (a recurring platform issue I couldn't get past after multiple attempts and public tagging), not a preference.
 - *What it produced:* A correct swap to the legacy `google-generativeai` SDK, but it flagged in the plan that this SDK is officially deprecated by Google in favor of the newer `google-genai`. After install, the runtime printed the same deprecation warning.
-- *What I changed or overrode:* (1) Directed it to swap a second time, from the legacy `google-generativeai` to the current `google-genai` package — which has a different API surface (`genai.Client(...)`, `client.models.generate_content(...)`, config via `types.GenerateContentConfig`). (2) The first end-to-end run hit `429 limit: 0` on the free tier for `gemini-2.0-flash`, so I had it switch the model constant to `gemini-2.5-flash` — and that's the model in the final code. (3) Caught that the Gradio Sources panel rendered invisibly when empty (`gr.Markdown()` with no value) — had it add a static `### Sources` heading and a placeholder value so the panel is visible from page load, before recording the demo video.
+- *What I changed or overrode:* (1) Directed it to swap a second time, from the legacy `google-generativeai` to the current `google-genai` package — which has a different API surface (`genai.Client(...)`, `client.models.generate_content(...)`, config via `types.GenerateContentConfig`). (2) The first end-to-end run hit `429 limit: 0` on the free tier for `gemini-2.0-flash`, so I had it switch to `gemini-2.5-flash` — which worked until I hit the 20 requests/day free quota mid-development. Final swap to `gemini-2.5-flash-lite` (separate, more generous daily quota; quality fine for grounded RAG summarization). (3) Caught that the Gradio Sources panel rendered invisibly when empty (`gr.Markdown()` with no value) — had it add a static `### Sources` heading and a placeholder value so the panel is visible from page load, before recording the demo video.
 
 ---
 

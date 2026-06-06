@@ -63,7 +63,7 @@ My corpus has two distinct document types that informed this decision:
 
 **Top-k:** 7 chunks per query (originally 5; bumped after eval — see Stretch Feature below)
 
-**Reasoning:** Started with 5, which gave the LLM enough context to synthesize answers for queries where the relevant chunks all clustered tightly. Bumped to 7 after the eval surfaced a recall-side failure on the SAP-appeal query: the chunk containing the post-appeal *probation* outcome ranked 6th, just outside top-5. Top-7 captures it without diluting precision (all current top hits remain from topically-correct documents). 7 chunks of ~500 chars each is trivially small for Gemini 2.5 Flash's context window.
+**Reasoning:** Started with 5, which gave the LLM enough context to synthesize answers for queries where the relevant chunks all clustered tightly. Bumped to 7 after the eval surfaced a recall-side failure on the SAP-appeal query: the chunk containing the post-appeal *probation* outcome ranked 6th, just outside top-5. Top-7 captures it without diluting precision (all current top hits remain from topically-correct documents). 7 chunks of ~500 chars each is trivially small for Gemini 2.5 Flash Lite's context window.
 
 **Production tradeoff reflection:**
 
@@ -183,7 +183,7 @@ After base eval queries are demonstrated:
 
 **The simpler fix that shipped.** Two minimal changes, ~10 lines of code total:
 
-1. **Bump `top_k` from 5 to 7.** The SAP probation chunk was already ranking 6th in semantic-only retrieval — just outside the window. Returning 7 chunks instead of 5 captures it without changing any other ranking. Gemini 2.5 Flash's context window has plenty of headroom for two extra chunks.
+1. **Bump `top_k` from 5 to 7.** The SAP probation chunk was already ranking 6th in semantic-only retrieval — just outside the window. Returning 7 chunks instead of 5 captures it without changing any other ranking. Gemini 2.5 Flash Lite's context window has plenty of headroom for two extra chunks.
 2. **Tighten the ingest-time header filter.** The original `<100 char` filter operated on raw text, so chunks that were mostly metadata but >100 chars total slipped through. The updated filter strips `SOURCE:`/`DOCUMENT:`/`SCRAPED:` lines and ASCII divider lines *before* the 100-char check (helper: `_substantive_len()` in `ingest.py`). This drops 3 additional header-only chunks at index time, removing the class of noise that hybrid-BM25 was trying to filter out at runtime.
 
 **Comparison protocol.** Same 5 eval queries from this document, run through the new retriever (top-7 + filtered chunks). Verified that:
