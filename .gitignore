@@ -21,3 +21,6 @@ chroma/
 
 # Generated chunk dump (reproducible from ingest.py)
 data/chunks.txt
+
+# Personal recording notes
+demo_script.md
